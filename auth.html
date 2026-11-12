@@ -64,7 +64,6 @@
           </div>
           <label class="checkbox-row"><input type="checkbox" id="remember-username" checked> Remember my username</label>
           <button type="submit" class="btn btn-primary">Sign In</button>
-          <button type="button" class="btn btn-demo" id="demo-login">Continue with Demo Account</button>
         </form>
 
         <form id="register-form" class="auth-form" hidden novalidate>
@@ -96,7 +95,6 @@
             </div>
           </div>
           <button type="submit" class="btn btn-primary">Create Account</button>
-          <button type="button" class="btn btn-demo" id="demo-login-register">Continue with Demo Account</button>
         </form>
         <p class="auth-footer">Your data stays in this browser.</p>
       </div>
@@ -147,17 +145,6 @@
       return true;
     }
 
-    async function runDemoLogin() {
-      const username = 'demo_evaluator';
-      const password = 'HabitFlowDemo2026!';
-      try {
-        await loginUser(username, password);
-      } catch (_) {
-        await registerUser({ fullName: 'Demo Evaluator', username, email: 'demo@habitflow.local', password });
-      }
-      window.location.href = 'index.html';
-    }
-
     $('tab-login').addEventListener('click', () => showForm('login'));
     $('tab-register').addEventListener('click', () => showForm('register'));
     document.querySelectorAll('.password-toggle').forEach(button => {
@@ -169,12 +156,6 @@
         button.setAttribute('aria-label', visible ? 'Show password' : 'Hide password');
       });
     });
-    [$('demo-login'), $('demo-login-register')].forEach(button => button.addEventListener('click', async () => {
-      button.disabled = true;
-      setMessage('Opening the demo workspace…', 'success');
-      try { await runDemoLogin(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Demo login failed.'); button.disabled = false; }
-    }));
-
     loginForm.addEventListener('submit', async event => {
       event.preventDefault();
       if (!validateForm(loginForm)) return;

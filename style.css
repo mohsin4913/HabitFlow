@@ -2032,12 +2032,6 @@ dialog:focus-visible {
   margin-top: 14px;
 }
 
-.panel-heading-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .print-report {
   display: none;
 }

@@ -1,37 +1,46 @@
 # HabitFlow
 
-HabitFlow is a focused daily habit tracker for building consistent routines with clear progress feedback, persistent streaks, and offline support.
+**Live application:** https://mohsin4913.github.io/HabitFlow/  
+**Source repository:** https://github.com/mohsin4913/HabitFlow
+
+HabitFlow is a deployed, browser-based habit tracker for daily check-ins, streak history, weekly progress, and printable activity reports. Accounts and data are stored locally in the browser; no cloud backend or server-side authentication is used.
 
 ## Features
 
-- **Daily Check-ins**: Add, edit, complete, skip, and organize habits by category and schedule.
-- **Streak Engine**: Tracks current streaks, longest streaks, completion history, and perfect days.
-- **Weekly Progress Analytics**: See daily completion rates, weekly averages, total check-ins, and quick stats.
-- **Offline-First PWA**: Install HabitFlow from the browser. The service worker precaches the app shell and IndexedDB mirrors habit state for offline use.
-- **Interactive Notifications**: Habit reminders include **Done**, **Snooze**, and **Skip** actions. Done updates the habit and streak, Snooze schedules the reminder again after ten minutes, and Skip records a skipped day without extending the streak.
-- **Presentation Data Controls**: First visits receive starter habits, while **Load sample week** and **Reset demo** provide clean presentation states.
-- **Responsive UI**: The dashboard supports desktop, tablet, and narrow mobile layouts with keyboard-friendly dialogs and visible focus states.
+- Daily habit creation, editing, completion, deletion, schedules, and optional reminder times
+- Per-account current and longest streak tracking with long-term completion and skip history
+- Weekly progress chart, statistics, perfect-day tracking, and per-habit performance
+- Reports & Downloads section with printable PDF reports and JSON data export
+- Installable PWA with a service-worker app shell and IndexedDB synchronization
+- Browser notifications with Done, Snooze, and Skip actions while the app scheduler is active
+- Responsive dashboard with light/dark themes and keyboard-accessible forms
 
-## Tech Stack
+## Technology
 
-- HTML5 and semantic browser UI
-- CSS3 with responsive layout and Swiss-editorial styling
-- Vanilla JavaScript using ES modules
-- SQLite in the browser through sql.js
-- IndexedDB for the SQLite database, habit mirror, and service-worker actions
-- Web App Manifest and Service Worker for PWA installation and offline caching
-- Web Notifications API for reminder actions
+- HTML5 and CSS3
+- Vanilla JavaScript ES modules
+- sql.js for SQLite in the browser
+- IndexedDB for the SQLite database and service-worker habit mirror
+- Local Storage for session, theme, notification, and user-scoped mirror metadata
+- Web App Manifest, Service Worker, and Web Notifications API
 
 ## Run Locally
 
-Use a local HTTP server because ES modules and service workers require a secure context such as `localhost` or HTTPS.
+Use a local HTTP server because ES modules and service workers require `localhost` or HTTPS:
 
 ```bash
 python -m http.server 8000
 ```
 
-Open `http://localhost:8000/index.html` in a modern browser. Register an account, allow notifications from the dashboard, and use the settings controls to load presentation data.
+Open http://localhost:8000/auth.html, create an account, and use the dashboard. Data remains in that browser profile.
 
-## GitHub Pages
+## Deployment
 
-The manifest is configured for the `/HabitFlow/` GitHub Pages path. Publish the repository as a GitHub Pages site, then open the deployed HTTPS URL to install the PWA and enable service-worker notifications.
+The project is configured for GitHub Pages at `/HabitFlow/`. Publish the repository through GitHub Pages and open the HTTPS live URL above to install the PWA.
+
+## Limitations
+
+- Authentication is local browser authentication, not secure cloud authentication.
+- Reminder checks run while the HabitFlow page is open or active. There is no Web Push server or guaranteed closed-app scheduling.
+- Clearing browser site data removes the local account and stored habits.
+- PDF export uses the browser print dialog; choose “Save as PDF” to create the file.

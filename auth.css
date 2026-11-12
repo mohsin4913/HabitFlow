@@ -239,8 +239,6 @@
 .btn { width: 100%; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 700; transition: background-color 150ms ease, transform 150ms ease; }
 .btn-primary { margin-top: 2px; background: var(--auth-cobalt); color: #FFFFFF; }
 .btn-primary:hover { background: var(--auth-cobalt-dark); transform: translateY(-1px); }
-.btn-demo { border: 1px solid var(--auth-border); background: #FFFFFF; color: #344054; }
-.btn-demo:hover { border-color: var(--auth-cobalt); color: var(--auth-cobalt); }
 .auth-status, .auth-message { min-height: 20px; margin: 0 0 14px; padding: 9px 10px; border-radius: 7px; font-size: 12px; }
 .auth-status:empty, .auth-message:empty { display: none; }
 .auth-status { color: var(--auth-success-text); background: var(--auth-success-bg); }

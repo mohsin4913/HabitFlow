@@ -246,7 +246,7 @@
                 <p class="eyebrow">YOUR CONSISTENCY</p>
                 <h2>Weekly Progress</h2>
               </div>
-              <div class="panel-heading-actions"><span class="week-label">Last 7 days</span><button type="button" class="link-btn report-button" id="downloadReportBtn">Download PDF Report</button></div>
+              <span class="week-label">Last 7 days</span>
             </div>
 
             <!-- Chart Container -->
@@ -277,7 +277,7 @@
                 <p class="eyebrow">PERFORMANCE</p>
                 <h2>Quick Stats</h2>
               </div>
-              <div class="panel-heading-actions"><span class="week-label">All-time</span><button type="button" class="link-btn report-button" id="downloadReportStatsBtn">Download PDF Report</button></div>
+              <span class="week-label">All-time</span>
             </div>
 
             <div class="quick-stats-grid">
@@ -311,14 +311,7 @@
             </div>
             <div class="habit-streak-breakdown" id="habitStreakBreakdown" aria-label="Longest streak by habit"></div>
 
-            <!-- Demo / Reset helper -->
             <div class="panel-helper-row">
-              <button type="button" class="link-btn" id="sampleWeekBtn" title="Load seven days of sample completion data">
-                Load sample week
-              </button>
-              <button type="button" class="link-btn" id="resetDemoBtn" title="Restore sample demo data for presentation">
-                Reset demo
-              </button>
               <button type="button" class="link-btn danger" id="clearDataBtn" title="Clear all habits and history">
                 Clear all data
               </button>
@@ -345,9 +338,18 @@
               <div><input id="settingsNameInput" type="text" maxlength="80" autocomplete="name"><button class="secondary-button" type="submit">Save name</button></div>
             </form>
             <div class="settings-actions">
-              <button type="button" class="link-btn report-button" id="downloadReportSettingsBtn">Download PDF Report</button>
-              <button type="button" class="link-btn" id="exportDataBtn">Export data</button>
               <button type="button" class="link-btn danger" id="settingsClearDataBtn">Clear all data</button>
+            </div>
+          </section>
+          <section class="panel reports-panel" id="reports" aria-label="Reports and downloads">
+            <div class="panel-heading compact">
+              <div><p class="eyebrow">REPORTS &amp; DOWNLOADS</p><h2>Export your progress</h2></div>
+              <span class="week-label">Printable</span>
+            </div>
+            <p class="metric-note">Create a print-ready PDF report or download your raw activity data.</p>
+            <div class="settings-actions">
+              <button type="button" class="primary-button small" id="downloadReportBtn">Download PDF Report</button>
+              <button type="button" class="link-btn" id="exportDataBtn">Export JSON data</button>
             </div>
           </section>
         </div>

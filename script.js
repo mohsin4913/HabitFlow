@@ -62,116 +62,6 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
     "Your future is created by what you do today."
   ];
 
-  // Helper to generate starter habits with realistic history matching the project presentation
-  function generateStarterHabits() {
-    const today = new Date();
-    const k0 = todayKey(today);
-    const k1 = todayKey(shiftDate(today, -1));
-    const k2 = todayKey(shiftDate(today, -2));
-    const k3 = todayKey(shiftDate(today, -3));
-    const k4 = todayKey(shiftDate(today, -4));
-    const k5 = todayKey(shiftDate(today, -5));
-    const k6 = todayKey(shiftDate(today, -6));
-    const k7 = todayKey(shiftDate(today, -7));
-    const k8 = todayKey(shiftDate(today, -8));
-    const k9 = todayKey(shiftDate(today, -9));
-    const k10 = todayKey(shiftDate(today, -10));
-    const k11 = todayKey(shiftDate(today, -11));
-
-    return [
-      {
-        id: makeId(),
-        name: "Exercise",
-        target: "30 minutes workout",
-        icon: "🏃",
-        category: "Health & fitness",
-        createdAt: k6,
-        history: {
-          [k4]: true,
-          [k3]: true,
-          [k2]: true,
-          [k1]: true,
-          [k0]: true // Streak: 5 days
-        }
-      },
-      {
-        id: makeId(),
-        name: "Read Book",
-        target: "Read for 20 minutes",
-        icon: "📚",
-        category: "Personal growth",
-        createdAt: k6,
-        history: {
-          [k5]: true,
-          [k2]: true,
-          [k1]: true,
-          [k0]: true // Streak: 3 days
-        }
-      },
-      {
-        id: makeId(),
-        name: "Drink Water",
-        target: "8 glasses of water",
-        icon: "💧",
-        category: "Health & fitness",
-        createdAt: k6,
-        history: {
-          [k6]: true,
-          [k4]: true,
-          [k3]: true,
-          [k1]: true // Pending today; streak preserved from yesterday: 1 day
-        }
-      },
-      {
-        id: makeId(),
-        name: "Study",
-        target: "Study for 2 hours",
-        icon: "🎓",
-        category: "Productivity",
-        createdAt: k11,
-        history: {
-          [k11]: true, [k10]: true, [k9]: true, [k8]: true, [k7]: true,
-          [k6]: true, [k5]: true, [k4]: true, [k3]: true, [k2]: true,
-          [k1]: true, [k0]: true // Streak: 12 days (Longest streak benchmark)
-        }
-      }
-    ];
-  }
-
-  function generateDemoHabits() {
-    const today = new Date();
-    const todayDate = todayKey(today);
-    const yesterday = todayKey(shiftDate(today, -1));
-    const twoDaysAgo = todayKey(shiftDate(today, -2));
-    return [
-      {
-        id: makeId(), name: "Morning Code Review", target: "Review one pull request", icon: "💻",
-        category: "Productivity", createdAt: twoDaysAgo, history: { [yesterday]: true, [todayDate]: true }
-      },
-      {
-        id: makeId(), name: "Read 15 Pages", target: "Read before bed", icon: "📚",
-        category: "Personal growth", createdAt: yesterday, history: { [todayDate]: true }
-      },
-      {
-        id: makeId(), name: "Hydrate (2L Water)", target: "Finish two litres today", icon: "💧",
-        category: "Health & fitness", createdAt: yesterday, history: {}
-      }
-    ];
-  }
-
-  function generateSampleWeekHabits() {
-    const sampleHabits = generateDemoHabits();
-    sampleHabits.forEach((habit, habitIndex) => {
-      habit.history = {};
-      for (let offset = -6; offset <= 0; offset++) {
-        if ((offset + habitIndex) % 4 !== 0 || offset === 0) {
-          habit.history[todayKey(shiftDate(new Date(), offset))] = true;
-        }
-      }
-    });
-    return sampleHabits;
-  }
-
   function completedDatesFor(habit) {
     const dates = Array.isArray(habit.completedDates) ? habit.completedDates : [];
     const legacyDates = Object.keys(habit.history || {}).filter(key => habit.history[key] === true);
@@ -194,9 +84,16 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       const mirroredById = new Map(mirroredHabits.map(record => [record.id, record]));
       const mergedHabits = storedHabits.map(habit => {
         const mirrored = mirroredById.get(habit.id);
-        return mirrored && Number(mirrored.updatedAt) > 0
+        const merged = mirrored && Number(mirrored.updatedAt) > 0
           ? { ...habit, ...mirrored }
           : habit;
+        const today = todayKey();
+        return {
+          ...merged,
+          status: wasCompleted(merged, today)
+            ? "completed"
+            : skippedDatesFor(merged).includes(today) ? "skipped" : "pending"
+        };
       });
       try {
         localStorage.setItem(localHabitsKey(), JSON.stringify(mergedHabits));
@@ -272,8 +169,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
   // missed breaks the run; non-scheduled days are ignored.
   function getStreak(habit, referenceDate = new Date()) {
     let cursor = todayKey(referenceDate);
-    if (isScheduledOnKey(habit, cursor) && !wasCompleted(habit, cursor)) return 0;
-    if (!isScheduledOnKey(habit, cursor)) {
+    if (!isScheduledOnKey(habit, cursor) || !wasCompleted(habit, cursor)) {
       cursor = previousScheduledKey(habit, cursor);
     }
     if (!wasCompleted(habit, cursor)) return 0;
@@ -776,7 +672,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       showToast("Notification permission was not granted.");
       return false;
     }
-    setNotificationStatus("Reminders enabled, including when HabitFlow is closed.");
+    setNotificationStatus("Reminders enabled while HabitFlow is open.");
     showToast("Habit reminders enabled.");
     checkReminders();
     return true;
@@ -1156,26 +1052,6 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
   $("#themeToggle")?.addEventListener("click", toggleTheme);
   $("#themeToggleSide")?.addEventListener("click", toggleTheme);
 
-  // Reset to Sample Habits helper
-  $("#resetDemoBtn")?.addEventListener("click", () => {
-    const confirmed = window.confirm("Reset dashboard to presentation sample habits? This will restore realistic demo data.");
-    if (confirmed) {
-      habits = generateStarterHabits();
-      void saveHabits();
-      setFilter("all");
-      render();
-      showToast("Restored presentation demo habits!");
-    }
-  });
-
-  $("#sampleWeekBtn")?.addEventListener("click", () => {
-    habits = generateSampleWeekHabits();
-    void saveHabits();
-    setFilter("all");
-    render();
-    showToast("Loaded a full sample week.");
-  });
-
   // Clear all data helper
   $("#clearDataBtn")?.addEventListener("click", () => {
     const confirmed = window.confirm("Are you sure you want to delete ALL habits and history? This cannot be undone.");
@@ -1221,7 +1097,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
   });
 
   $("#settingsClearDataBtn")?.addEventListener("click", () => $("#clearDataBtn")?.click());
-  ["#downloadReportBtn", "#downloadReportStatsBtn", "#downloadReportSettingsBtn"].forEach(selector => $(selector)?.addEventListener("click", printReport));
+  $("#downloadReportBtn")?.addEventListener("click", printReport);
 
   $("#notificationBtn")?.addEventListener("click", sendTestNotification);
 

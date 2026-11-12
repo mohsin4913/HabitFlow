@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1D4ED8" />
+  <meta name="description" content="HabitFlow - Modern, responsive habit tracking web application built with vanilla HTML, CSS, and JavaScript." />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <title>HabitFlow | Habit Tracker Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Desktop Sidebar -->
+    <aside class="sidebar" aria-label="Sidebar navigation">
+      <a class="brand" href="#overview" aria-label="HabitFlow Dashboard">
+        <span class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </span>
+        <span class="brand-text">Habit<span class="brand-light">Flow</span></span>
+      </a>
+
+      <div class="sidebar-label">WORKSPACE</div>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link active" href="#overview" data-nav="overview">
+          <span class="nav-icon" aria-hidden="true">▦</span> Overview
+        </a>
+        <a class="nav-link" href="#habits" data-nav="habits">
+          <span class="nav-icon" aria-hidden="true">✓</span> My habits
+        </a>
+        <a class="nav-link" href="#insights" data-nav="insights">
+          <span class="nav-icon" aria-hidden="true">↗</span> Weekly progress
+        </a>
+        <a class="nav-link" href="#stats" data-nav="stats">
+          <span class="nav-icon" aria-hidden="true">📊</span> Statistics
+        </a>
+        <a class="nav-link" href="#settings" id="navSettingsBtn" data-nav="settings">
+          <span class="nav-icon" aria-hidden="true">⚙</span> Profile & settings
+        </a>
+      </nav>
+
+      <div class="sidebar-tip">
+        <div class="tip-icon" aria-hidden="true">✦</div>
+        <h3>Small habits.<br>Big changes.</h3>
+        <p>Consistency is built one day at a time. Keep showing up for yourself.</p>
+        <div class="tip-progress" aria-hidden="true"><span></span></div>
+        <small>Every check-in counts</small>
+      </div>
+
+      <div class="sidebar-bottom">
+        <button class="avatar profile-trigger-btn" id="sidebarAvatarBtn" title="Customize User Profile" aria-label="User Profile">
+          <span id="sidebarAvatarInitials">M</span>
+        </button>
+        <button class="profile-copy profile-trigger-btn" id="sidebarProfileInfoBtn" title="Click to edit profile" aria-label="Edit Profile">
+          <strong id="sidebarUserName">Mohsin's space</strong>
+          <span id="sidebarUserTagline">Personal dashboard ✎</span>
+        </button>
+        <button class="icon-button small" id="themeToggleSide" aria-label="Toggle dark or light theme" title="Toggle dark / light mode">☼</button>
+      </div>
+      <button class="link-btn sidebar-logout" id="sidebarLogoutBtn" type="button">Sign out</button>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content" id="overview">
+      <!-- Topbar Header -->
+      <header class="topbar">
+        <div class="mobile-brand">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </span>
+          <span class="brand-text">Habit<span>Flow</span></span>
+        </div>
+        <button class="icon-button mobile-menu-button" id="mobileMenuBtn" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <span>Workspace</span>
+          <span class="breadcrumb-separator">/</span>
+          <strong>Overview</strong>
+        </nav>
+        <div class="topbar-actions">
+          <div class="today-pill" id="todayPill" title="Today's date">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="datePillText">Today</span>
+          </div>
+          <button class="icon-button" id="themeToggle" aria-label="Toggle dark or light theme" title="Switch to dark mode">☾</button>
+          <button class="link-btn topbar-logout" id="topbarLogoutBtn" type="button">Sign out</button>
+          <button class="topbar-avatar profile-trigger-btn" id="topbarAvatarBtn" title="Customize User Profile" aria-label="User Profile">
+            <span id="topbarAvatarInitials">M</span>
+          </button>
+        </div>
+      </header>
+      <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation" hidden>
+        <a class="nav-link active" href="#overview" data-nav="overview">Overview</a>
+        <a class="nav-link" href="#habits" data-nav="habits">My habits</a>
+        <a class="nav-link" href="#insights" data-nav="insights">Weekly progress</a>
+        <a class="nav-link" href="#stats" data-nav="stats">Statistics</a>
+        <a class="nav-link" href="#settings" data-nav="settings">Profile &amp; settings</a>
+      </nav>
+
+      <!-- Welcome Greeting Row -->
+      <section class="welcome-row" aria-label="Dashboard greeting">
+        <div class="welcome-text">
+          <p class="eyebrow" id="dateLabel">DAILY CHECK-IN</p>
+          <h1 id="greetingHeading">Good day, <span id="userNameSpan">Mohsin!</span> <button type="button" class="inline-edit-btn" id="editNameInlineBtn" title="Change name / profile" aria-label="Edit display name">✎</button></h1>
+          <p class="subtitle">Stay consistent and make today count. <span aria-hidden="true">💪</span></p>
+        </div>
+        <div class="welcome-actions">
+          <div class="quote-card" aria-label="Daily inspiration">
+            <span class="quote-icon" aria-hidden="true">“</span>
+            <span id="dailyQuote">Progress, not perfection.</span>
+          </div>
+          <button class="primary-button" id="addHabitTop">
+            <span aria-hidden="true">＋</span> Add new habit
+          </button>
+        </div>
+      </section>
+
+      <!-- Top Summary Metrics Grid -->
+      <section class="summary-grid" aria-label="Today's progress summary">
+        <!-- Daily Progress Card with Ring -->
+        <article class="summary-card progress-card">
+          <div class="summary-head">
+            <span class="summary-label">Daily Progress</span>
+            <span class="summary-badge purple-badge" id="progressStatusBadge">Active</span>
+          </div>
+          <div class="progress-card-body">
+            <div class="circular-progress-wrap" aria-hidden="true">
+              <svg class="progress-ring" width="84" height="84" viewBox="0 0 84 84">
+                <circle class="progress-ring-bg" cx="42" cy="42" r="35" stroke-width="7"></circle>
+                <circle class="progress-ring-fill" id="progressRingFill" cx="42" cy="42" r="35" stroke-width="7"></circle>
+              </svg>
+              <div class="ring-center-text" id="ringPercentText">0%</div>
+            </div>
+            <div class="progress-card-info">
+              <div class="progress-main">
+                <strong id="progressPercent">0%</strong>
+                <span id="progressCaption">Let's get started</span>
+              </div>
+              <p class="summary-subtext" id="completedCount">0 of 0 habits completed</p>
+              <div class="progress-track" aria-hidden="true">
+                <span id="progressBar"></span>
+              </div>
+            </div>
+          </div>
+          <div class="summary-foot">
+            <span class="foot-note"><span class="legend-dot green-dot"></span> Reset happens at midnight</span>
+            <span class="tiny-trend" id="progressPill">Today</span>
+          </div>
+        </article>
+
+        <!-- Current Streak Card -->
+        <article class="summary-card">
+          <div class="summary-head">
+            <span class="summary-label">Current Streak</span>
+            <span class="summary-icon orange" aria-hidden="true">🔥</span>
+          </div>
+          <div class="metric-value">
+            <span id="bestStreak">0</span>
+            <small>days</small>
+          </div>
+          <p class="metric-note" id="bestStreakHabitName">Best active habit streak</p>
+          <div class="card-status-bar">
+            <div class="streak-pill">
+              <span aria-hidden="true">🔥</span> Keep the momentum going
+            </div>
+          </div>
+        </article>
+
+        <!-- Longest Streak Card -->
+        <article class="summary-card">
+          <div class="summary-head">
+            <span class="summary-label">Longest Streak</span>
+            <span class="summary-icon blue" aria-hidden="true">👑</span>
+          </div>
+          <div class="metric-value">
+            <span id="longestStreak">0</span>
+            <small>days</small>
+          </div>
+          <p class="metric-note">Personal best record</p>
+          <div class="card-status-bar">
+            <div class="streak-pill blue-pill">
+              <span aria-hidden="true">🏆</span> Every day counts
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- Main Content Grid: Habit Routine + Insights Column -->
+      <section class="content-grid">
+        <!-- Habits Routine Panel -->
+        <div class="panel habits-panel" id="habits">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">YOUR ROUTINE</p>
+              <h2>Today's habits <span class="count-badge" id="habitBadge">0</span></h2>
+            </div>
+            <button class="primary-button small" id="addHabitInline">
+              <span aria-hidden="true">＋</span> Add habit
+            </button>
+          </div>
+
+          <!-- Habit Filters -->
+          <div class="habit-filters" role="tablist" aria-label="Filter habits">
+            <button class="filter-chip active" data-filter="all" role="tab" aria-selected="true">
+              All habits <span class="chip-count" id="allFilterCount">0</span>
+            </button>
+            <button class="filter-chip" data-filter="pending" role="tab" aria-selected="false">
+              To do <span class="chip-count" id="pendingFilterCount">0</span>
+            </button>
+            <button class="filter-chip" data-filter="completed" role="tab" aria-selected="false">
+              Completed <span class="chip-count" id="completedFilterCount">0</span>
+            </button>
+            <button class="filter-chip" data-filter="skipped" role="tab" aria-selected="false">
+              Skipped <span class="chip-count" id="skippedFilterCount">0</span>
+            </button>
+          </div>
+
+          <!-- Habit List Container -->
+          <div id="habitList" class="habit-list" aria-label="Habits list"></div>
+
+          <!-- Empty State -->
+          <div class="empty-state" id="emptyState" hidden>
+            <div class="empty-illustration" aria-hidden="true">✦</div>
+            <h3 id="emptyHeading">Your routine starts here</h3>
+            <p id="emptyParagraph">Add a habit you want to build, then check it off as you complete it each day.</p>
+            <button class="primary-button" id="emptyActionBtn">＋ Create your first habit</button>
+          </div>
+
+          <!-- Panel Bottom Status -->
+          <div class="panel-bottom">
+            <span><span class="legend-dot green-dot"></span> Click the checkmark to mark complete</span>
+            <span id="remainingText" class="remaining-text">You've got this!</span>
+          </div>
+        </div>
+
+        <!-- Right Insights Column -->
+        <div class="right-column">
+          <!-- 7-Day Completion Chart Panel -->
+          <section class="panel week-panel" id="insights" aria-label="Weekly completion chart">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">YOUR CONSISTENCY</p>
+                <h2>Weekly Progress</h2>
+              </div>
+              <div class="panel-heading-actions"><span class="week-label">Last 7 days</span><button type="button" class="link-btn report-button" id="downloadReportBtn">Download PDF Report</button></div>
+            </div>
+
+            <!-- Chart Container -->
+            <div class="chart-wrapper">
+              <div class="chart-grid-lines" aria-hidden="true">
+                <div class="grid-line" data-val="100%"><span>100%</span></div>
+                <div class="grid-line" data-val="75%"><span>75%</span></div>
+                <div class="grid-line" data-val="50%"><span>50%</span></div>
+                <div class="grid-line" data-val="25%"><span>25%</span></div>
+                <div class="grid-line" data-val="0%"><span>0%</span></div>
+              </div>
+              <div class="weekly-chart" id="weeklyChart" role="region" aria-label="Bar chart showing habit completion percentage for the past seven days"></div>
+            </div>
+
+            <div class="chart-legend">
+              <div class="legend-item">
+                <i class="legend-dot purple-dot" aria-hidden="true"></i>
+                <span>Daily completion rate</span>
+              </div>
+              <strong class="chart-avg-badge" id="weeklyAverage">0% avg.</strong>
+            </div>
+          </section>
+
+          <!-- Quick Stats & Momentum Panel -->
+          <section class="panel stats-panel" id="stats" aria-label="Overall statistics">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">PERFORMANCE</p>
+                <h2>Quick Stats</h2>
+              </div>
+              <div class="panel-heading-actions"><span class="week-label">All-time</span><button type="button" class="link-btn report-button" id="downloadReportStatsBtn">Download PDF Report</button></div>
+            </div>
+
+            <div class="quick-stats-grid">
+              <div class="stat-box">
+                <span class="stat-num" id="totalHabitsStat">0</span>
+                <span class="stat-lbl">Total Habits</span>
+              </div>
+              <div class="stat-box green-stat">
+                <span class="stat-num" id="completedTodayStat">0</span>
+                <span class="stat-lbl">Completed</span>
+              </div>
+              <div class="stat-box purple-stat">
+                <span class="stat-num" id="successRateStat">0%</span>
+                <span class="stat-lbl">Success Rate</span>
+              </div>
+            </div>
+
+            <div class="streak-stats-row">
+              <div class="streak-stat-item">
+                <span class="streak-stat-num" id="totalCompletions">0</span>
+                <span class="streak-stat-label">Total check-ins</span>
+              </div>
+              <div class="streak-stat-item">
+                <span class="streak-stat-num" id="perfectDays">0</span>
+                <span class="streak-stat-label">Perfect days</span>
+              </div>
+              <div class="streak-stat-item">
+                <span class="streak-stat-num" id="cardLongestStreak">0</span>
+                <span class="streak-stat-label">Longest streak</span>
+              </div>
+            </div>
+            <div class="habit-streak-breakdown" id="habitStreakBreakdown" aria-label="Longest streak by habit"></div>
+
+            <!-- Demo / Reset helper -->
+            <div class="panel-helper-row">
+              <button type="button" class="link-btn" id="sampleWeekBtn" title="Load seven days of sample completion data">
+                Load sample week
+              </button>
+              <button type="button" class="link-btn" id="resetDemoBtn" title="Restore sample demo data for presentation">
+                Reset demo
+              </button>
+              <button type="button" class="link-btn danger" id="clearDataBtn" title="Clear all habits and history">
+                Clear all data
+              </button>
+              <button type="button" class="link-btn" id="logoutBtn" title="Sign out securely">
+                Sign out
+              </button>
+              <button type="button" class="link-btn" id="notificationBtn" title="Enable notifications and send a test habit reminder">
+                Enable & test reminders
+              </button>
+            </div>
+            <p id="notificationStatus" class="metric-note" role="status" aria-live="polite"></p>
+          </section>
+          <section class="panel settings-panel" id="settings" aria-label="Profile and settings details">
+            <div class="panel-heading compact">
+              <div><p class="eyebrow">PROFILE &amp; SETTINGS</p><h2>Account settings</h2></div>
+              <span class="week-label">Local account</span>
+            </div>
+            <div class="settings-profile">
+              <div class="avatar" id="settingsAvatarInitials" aria-hidden="true">HF</div>
+              <div><strong id="settingsDisplayName">HabitFlow member</strong><span id="settingsUsername">Signed in locally</span></div>
+            </div>
+            <form class="settings-name-form" id="settingsNameForm">
+              <label for="settingsNameInput">Display name</label>
+              <div><input id="settingsNameInput" type="text" maxlength="80" autocomplete="name"><button class="secondary-button" type="submit">Save name</button></div>
+            </form>
+            <div class="settings-actions">
+              <button type="button" class="link-btn report-button" id="downloadReportSettingsBtn">Download PDF Report</button>
+              <button type="button" class="link-btn" id="exportDataBtn">Export data</button>
+              <button type="button" class="link-btn danger" id="settingsClearDataBtn">Clear all data</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Dashboard Footer -->
+      <footer class="footer">
+        <div class="footer-left">
+          <span>HabitFlow <b>•</b> Front-End Development Using JavaScript</span>
+        </div>
+        <div class="footer-right">
+          <span>Built with semantic HTML5, CSS3 & Vanilla JavaScript</span>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <section id="printReport" class="print-report" aria-label="HabitFlow PDF report"></section>
+
+  <!-- Add / Edit Habit Modal Dialog -->
+  <dialog id="habitDialog" class="habit-dialog" aria-labelledby="dialogTitle">
+    <form id="habitForm" method="dialog">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">MAKE IT A ROUTINE</p>
+          <h2 id="dialogTitle">Add a new habit</h2>
+        </div>
+        <button type="button" class="icon-button close-btn" id="closeDialog" aria-label="Close dialog">×</button>
+      </div>
+
+      <div class="form-group">
+        <label for="habitName">Habit name <span class="required-star">*</span></label>
+        <input 
+          id="habitName" 
+          name="habitName" 
+          type="text" 
+          maxlength="50" 
+          placeholder="e.g. Exercise, Read Book, Drink Water" 
+          required 
+          autocomplete="off" 
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="habitTarget">Daily goal / note <span class="optional-tag">(optional)</span></label>
+        <input 
+          id="habitTarget" 
+          name="habitTarget" 
+          type="text" 
+          maxlength="60" 
+          placeholder="e.g. 30 minutes workout, 8 glasses of water" 
+          autocomplete="off" 
+        />
+      </div>
+
+      <div class="form-group">
+        <label>Choose an icon</label>
+        <div class="icon-picker" id="iconPicker" role="radiogroup" aria-label="Habit icon selection">
+          <button type="button" class="icon-choice selected" data-icon="🏃" aria-label="Running">🏃</button>
+          <button type="button" class="icon-choice" data-icon="📚" aria-label="Book">📚</button>
+          <button type="button" class="icon-choice" data-icon="💧" aria-label="Water">💧</button>
+          <button type="button" class="icon-choice" data-icon="🎓" aria-label="Study">🎓</button>
+          <button type="button" class="icon-choice" data-icon="🧘" aria-label="Meditation">🧘</button>
+          <button type="button" class="icon-choice" data-icon="✍️" aria-label="Journal">✍️</button>
+          <button type="button" class="icon-choice" data-icon="🥗" aria-label="Healthy food">🥗</button>
+          <button type="button" class="icon-choice" data-icon="🌙" aria-label="Sleep">🌙</button>
+          <button type="button" class="icon-choice" data-icon="🎯" aria-label="Focus">🎯</button>
+          <button type="button" class="icon-choice" data-icon="💻" aria-label="Coding">💻</button>
+          <button type="button" class="icon-choice" data-icon="💊" aria-label="Vitamins">💊</button>
+          <button type="button" class="icon-choice" data-icon="🚴" aria-label="Cycling">🚴</button>
+          <button type="button" class="icon-choice" data-icon="🎨" aria-label="Creativity">🎨</button>
+          <button type="button" class="icon-choice" data-icon="🍎" aria-label="Nutrition">🍎</button>
+          <button type="button" class="icon-choice" data-icon="🚶" aria-label="Walking">🚶</button>
+          <button type="button" class="icon-choice" data-icon="🎵" aria-label="Music">🎵</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="habitCategory">Category</label>
+        <select id="habitCategory" name="habitCategory">
+          <option value="Health & fitness">Health & fitness</option>
+          <option value="Personal growth">Personal growth</option>
+          <option value="Productivity">Productivity</option>
+          <option value="Mindfulness">Mindfulness</option>
+          <option value="Study & learning">Study & learning</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Active days</label>
+        <div class="checkbox-row habit-days" id="habitDays">
+          <label><input type="checkbox" value="Mon"> Mon</label>
+          <label><input type="checkbox" value="Tue"> Tue</label>
+          <label><input type="checkbox" value="Wed"> Wed</label>
+          <label><input type="checkbox" value="Thu"> Thu</label>
+          <label><input type="checkbox" value="Fri"> Fri</label>
+          <label><input type="checkbox" value="Sat"> Sat</label>
+          <label><input type="checkbox" value="Sun"> Sun</label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="habitReminder">Reminder time <span class="optional-tag">(optional)</span></label>
+        <input id="habitReminder" type="time" />
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" class="secondary-button" id="cancelDialog">Cancel</button>
+        <button type="submit" class="primary-button" id="saveHabitBtn">Save habit</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Accessible Toast Feedback Notification -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="habitflow-db.js"></script>
+  <!-- Vanilla JavaScript Logic -->
+  <script type="module" src="script.js"></script>
+</body>
+</html>

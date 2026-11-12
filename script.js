@@ -1,0 +1,1253 @@
+/* HabitFlow | Daily Habit Tracker
+ * College Project: Front-End Development Using JavaScript
+ * Pure Vanilla JavaScript (No Frameworks, No Backend, No External Libraries)
+ */
+import { logoutUser } from "./auth.js";
+import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabits as saveStoredHabits } from "./sqlite-client.js";
+
+(() => {
+  "use strict";
+
+  // Storage Keys
+  const THEME_KEY = "habitflow-theme-v1";
+  const NOTIFICATION_SENT_KEY = "habitflow-notifications-v1";
+  const LOCAL_HABITS_KEY = "habitflow-habits-v1";
+  const DISPLAY_NAME_KEY = "habitflow-display-name";
+  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // Shorthand DOM query selectors
+  const $ = (selector) => document.querySelector(selector);
+  const $$ = (selector) => document.querySelectorAll(selector);
+  const localHabitsKey = () => `${LOCAL_HABITS_KEY}:${currentUser?.id || "guest"}`;
+
+  // --- Date Utilities ---
+  // Returns 'YYYY-MM-DD' in local time
+  const todayKey = (date = new Date()) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  // Parses 'YYYY-MM-DD' into a Date set at 12:00:00 (midday) to prevent daylight-saving shifts
+  const dateFromKey = (key) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d, 12, 0, 0);
+  };
+
+  // Shifts a date by a given number of days at midday
+  const shiftDate = (date, amount) => {
+    const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount, 12, 0, 0);
+    return copy;
+  };
+
+  // Unique ID generator compatible with file:// protocol and secure contexts
+  const makeId = () => {
+    try {
+      if (window.crypto && typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+      }
+    } catch (_) {}
+    const random = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+    return `${random.slice(0, 8)}-${random.slice(8, 12)}-4${random.slice(13, 16)}-${(8 + Math.floor(Math.random() * 4)).toString(16)}${random.slice(17, 20)}-${random.slice(20, 32)}`;
+  };
+
+  // Inspirational quotes
+  const quotes = [
+    "Progress, not perfection.",
+    "A better you, one habit at a time.",
+    "Discipline today, a brighter tomorrow.",
+    "Small steps every day lead to big changes.",
+    "Consistency is what transforms average into excellence.",
+    "Your future is created by what you do today."
+  ];
+
+  // Helper to generate starter habits with realistic history matching the project presentation
+  function generateStarterHabits() {
+    const today = new Date();
+    const k0 = todayKey(today);
+    const k1 = todayKey(shiftDate(today, -1));
+    const k2 = todayKey(shiftDate(today, -2));
+    const k3 = todayKey(shiftDate(today, -3));
+    const k4 = todayKey(shiftDate(today, -4));
+    const k5 = todayKey(shiftDate(today, -5));
+    const k6 = todayKey(shiftDate(today, -6));
+    const k7 = todayKey(shiftDate(today, -7));
+    const k8 = todayKey(shiftDate(today, -8));
+    const k9 = todayKey(shiftDate(today, -9));
+    const k10 = todayKey(shiftDate(today, -10));
+    const k11 = todayKey(shiftDate(today, -11));
+
+    return [
+      {
+        id: makeId(),
+        name: "Exercise",
+        target: "30 minutes workout",
+        icon: "🏃",
+        category: "Health & fitness",
+        createdAt: k6,
+        history: {
+          [k4]: true,
+          [k3]: true,
+          [k2]: true,
+          [k1]: true,
+          [k0]: true // Streak: 5 days
+        }
+      },
+      {
+        id: makeId(),
+        name: "Read Book",
+        target: "Read for 20 minutes",
+        icon: "📚",
+        category: "Personal growth",
+        createdAt: k6,
+        history: {
+          [k5]: true,
+          [k2]: true,
+          [k1]: true,
+          [k0]: true // Streak: 3 days
+        }
+      },
+      {
+        id: makeId(),
+        name: "Drink Water",
+        target: "8 glasses of water",
+        icon: "💧",
+        category: "Health & fitness",
+        createdAt: k6,
+        history: {
+          [k6]: true,
+          [k4]: true,
+          [k3]: true,
+          [k1]: true // Pending today; streak preserved from yesterday: 1 day
+        }
+      },
+      {
+        id: makeId(),
+        name: "Study",
+        target: "Study for 2 hours",
+        icon: "🎓",
+        category: "Productivity",
+        createdAt: k11,
+        history: {
+          [k11]: true, [k10]: true, [k9]: true, [k8]: true, [k7]: true,
+          [k6]: true, [k5]: true, [k4]: true, [k3]: true, [k2]: true,
+          [k1]: true, [k0]: true // Streak: 12 days (Longest streak benchmark)
+        }
+      }
+    ];
+  }
+
+  function generateDemoHabits() {
+    const today = new Date();
+    const todayDate = todayKey(today);
+    const yesterday = todayKey(shiftDate(today, -1));
+    const twoDaysAgo = todayKey(shiftDate(today, -2));
+    return [
+      {
+        id: makeId(), name: "Morning Code Review", target: "Review one pull request", icon: "💻",
+        category: "Productivity", createdAt: twoDaysAgo, history: { [yesterday]: true, [todayDate]: true }
+      },
+      {
+        id: makeId(), name: "Read 15 Pages", target: "Read before bed", icon: "📚",
+        category: "Personal growth", createdAt: yesterday, history: { [todayDate]: true }
+      },
+      {
+        id: makeId(), name: "Hydrate (2L Water)", target: "Finish two litres today", icon: "💧",
+        category: "Health & fitness", createdAt: yesterday, history: {}
+      }
+    ];
+  }
+
+  function generateSampleWeekHabits() {
+    const sampleHabits = generateDemoHabits();
+    sampleHabits.forEach((habit, habitIndex) => {
+      habit.history = {};
+      for (let offset = -6; offset <= 0; offset++) {
+        if ((offset + habitIndex) % 4 !== 0 || offset === 0) {
+          habit.history[todayKey(shiftDate(new Date(), offset))] = true;
+        }
+      }
+    });
+    return sampleHabits;
+  }
+
+  function completedDatesFor(habit) {
+    const dates = Array.isArray(habit.completedDates) ? habit.completedDates : [];
+    const legacyDates = Object.keys(habit.history || {}).filter(key => habit.history[key] === true);
+    return [...new Set([...dates, ...legacyDates])].sort();
+  }
+
+  function skippedDatesFor(habit) {
+    return [...new Set(Array.isArray(habit.skippedDates) ? habit.skippedDates : [])].sort();
+  }
+
+  // --- State Loading & Persistence ---
+  async function loadHabits() {
+    try {
+      if (!currentUser) {
+        window.location.href = "auth.html";
+        return [];
+      }
+      const storedHabits = await loadStoredHabits(currentUser.id);
+      const mirroredHabits = await HabitFlowDB.getAll(currentUser.id);
+      const mirroredById = new Map(mirroredHabits.map(record => [record.id, record]));
+      const mergedHabits = storedHabits.map(habit => {
+        const mirrored = mirroredById.get(habit.id);
+        return mirrored && Number(mirrored.updatedAt) > 0
+          ? { ...habit, ...mirrored }
+          : habit;
+      });
+      try {
+        localStorage.setItem(localHabitsKey(), JSON.stringify(mergedHabits));
+      } catch (_) {}
+      return mergedHabits;
+    } catch (error) {
+      console.error("Could not load habits from SQLite:", error);
+      showToast("Could not load your habits.");
+      return [];
+    }
+  }
+
+  // Application State
+  let habits = [];
+  let currentUser = null;
+  let currentFilter = "all";
+  let selectedIcon = "🏃";
+  let editingHabitId = null;
+  let toastTimer = null;
+  let reminderTimer = null;
+
+  // Save current habits and completion state to SQLite
+  async function saveHabits() {
+    try {
+      if (!currentUser) throw new Error("No authenticated user");
+      habits.forEach(habit => {
+        habit.completedDates = completedDatesFor(habit);
+        habit.skippedDates = skippedDatesFor(habit);
+        habit.history = Object.fromEntries(habit.completedDates.map(date => [date, true]));
+        habit.streak = getStreak(habit);
+        habit.longestStreak = getLongestStreak(habit);
+        habit.lastCompletedDate = habit.completedDates.at(-1) || null;
+        habit.updatedAt = habit.updatedAt || Date.now();
+      });
+      await saveStoredHabits(currentUser.id, habits);
+      const mirrored = await HabitFlowDB.getAll(currentUser.id);
+      const activeIds = new Set(habits.map(habit => String(habit.id)));
+      await Promise.all(mirrored
+        .filter(record => !activeIds.has(String(record.id)))
+        .map(record => HabitFlowDB.remove(currentUser.id, record.id)));
+      await HabitFlowDB.putAll(currentUser.id, habits);
+      try {
+        localStorage.setItem(localHabitsKey(), JSON.stringify(habits));
+      } catch (_) {}
+    } catch (error) {
+      console.error("Failed to save habits to SQLite:", error);
+      showToast("Your change could not be saved.");
+    }
+  }
+
+  // --- Core Business Logic ---
+  // Check if habit was completed on a given date key
+  function wasCompleted(habit, key = todayKey()) {
+    return completedDatesFor(habit).includes(key);
+  }
+
+  function isScheduledOnDate(habit, date) {
+    const selectedDays = Array.isArray(habit.selectedDays) ? habit.selectedDays : [];
+    return selectedDays.length === 0 || selectedDays.includes(DAY_LABELS[date.getDay()]);
+  }
+
+  function isScheduledOnKey(habit, key) {
+    return isScheduledOnDate(habit, dateFromKey(key));
+  }
+
+  function previousScheduledKey(habit, key) {
+    let date = shiftDate(dateFromKey(key), -1);
+    while (!isScheduledOnDate(habit, date)) date = shiftDate(date, -1);
+    return todayKey(date);
+  }
+
+  // Calculate a streak using only scheduled days. A scheduled day that is
+  // missed breaks the run; non-scheduled days are ignored.
+  function getStreak(habit, referenceDate = new Date()) {
+    let cursor = todayKey(referenceDate);
+    if (isScheduledOnKey(habit, cursor) && !wasCompleted(habit, cursor)) return 0;
+    if (!isScheduledOnKey(habit, cursor)) {
+      cursor = previousScheduledKey(habit, cursor);
+    }
+    if (!wasCompleted(habit, cursor)) return 0;
+    let streak = 0;
+    while (wasCompleted(habit, cursor)) {
+      streak++;
+      cursor = previousScheduledKey(habit, cursor);
+    }
+    return streak;
+  }
+
+  function getLongestStreak(habit) {
+    const dates = completedDatesFor(habit)
+      .filter(key => key <= todayKey())
+      .sort();
+
+    if (dates.length === 0) return 0;
+
+    let best = 0;
+    let currentRun = 0;
+    let cursor = dateFromKey(dates[0]);
+    const lastDate = dateFromKey(dates[dates.length - 1]);
+    while (cursor <= lastDate) {
+      const key = todayKey(cursor);
+      if (isScheduledOnDate(habit, cursor)) {
+        if (wasCompleted(habit, key)) currentRun++;
+        else currentRun = 0;
+        best = Math.max(best, currentRun);
+      }
+      cursor = shiftDate(cursor, 1);
+    }
+    return best;
+  }
+
+  // Compute stats for a specific day key
+  function dailyStats(key = todayKey()) {
+    // A habit is considered part of the routine if created on/before key,
+    // or if it has an entry on that key, or if it's currently active
+    const eligible = habits.filter(h =>
+      h.isActive !== false &&
+      (!h.createdAt || String(h.createdAt).slice(0, 10) <= key) &&
+      isScheduledOnKey(h, key)
+    );
+    const list = eligible;
+    const done = list.filter(h => wasCompleted(h, key)).length;
+    const total = list.length;
+    const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+    return { total, done, percent };
+  }
+
+  // String escaping helper to prevent XSS
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[ch]);
+  }
+
+  // --- UI Rendering ---
+
+  // Update header labels, date, and greeting
+  function renderHeader() {
+    const now = new Date();
+    const dateFormatted = new Intl.DateTimeFormat(undefined, {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric"
+    }).format(now);
+
+    const shortDate = new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short"
+    }).format(now);
+
+    const hour = now.getHours();
+    let timeGreeting = "Good day";
+    if (hour >= 5 && hour < 12) timeGreeting = "Good Morning";
+    else if (hour >= 12 && hour < 17) timeGreeting = "Good Afternoon";
+    else timeGreeting = "Good Evening";
+
+    let savedDisplayName = "";
+    try { savedDisplayName = localStorage.getItem(`${DISPLAY_NAME_KEY}:${currentUser?.id}`) || ""; } catch (_) {}
+    const displayName = savedDisplayName || currentUser?.profile?.full_name || currentUser?.user_metadata?.full_name || currentUser?.profile?.username || "there";
+    const greetingHeading = $("#greetingHeading");
+    if (greetingHeading) {
+      greetingHeading.innerHTML = `${timeGreeting}, <span>${escapeHtml(displayName)}!</span>`;
+    }
+    const username = currentUser?.profile?.username || currentUser?.user_metadata?.username || "";
+    const sidebarName = $("#sidebarUserName");
+    const sidebarTagline = $("#sidebarUserTagline");
+    const initials = String(displayName).trim().split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase();
+    if (sidebarName) sidebarName.textContent = username ? `@${username}` : displayName;
+    if (sidebarTagline) sidebarTagline.textContent = username ? displayName : "Personal dashboard";
+    ["#sidebarAvatarInitials", "#topbarAvatarInitials"].forEach(selector => {
+      const avatar = $(selector);
+      if (avatar) avatar.textContent = initials || "HF";
+    });
+    const settingsAvatar = $("#settingsAvatarInitials");
+    const settingsName = $("#settingsDisplayName");
+    const settingsUsername = $("#settingsUsername");
+    const settingsInput = $("#settingsNameInput");
+    if (settingsAvatar) settingsAvatar.textContent = initials || "HF";
+    if (settingsName) settingsName.textContent = displayName;
+    if (settingsUsername) settingsUsername.textContent = username ? `@${username}` : "Signed in locally";
+    if (settingsInput && document.activeElement !== settingsInput) settingsInput.value = displayName === "there" ? "" : displayName;
+
+    const dateLabel = $("#dateLabel");
+    if (dateLabel) dateLabel.textContent = dateFormatted.toUpperCase();
+
+    const datePillText = $("#datePillText");
+    if (datePillText) datePillText.textContent = shortDate;
+
+    // Daily quote
+    const quoteEl = $("#dailyQuote");
+    if (quoteEl) {
+      const dayIndex = now.getDate() % quotes.length;
+      quoteEl.textContent = quotes[dayIndex];
+    }
+  }
+
+  // Render top metrics and summary cards
+  function renderSummary() {
+    const stats = dailyStats();
+    const percent = stats.percent;
+
+    // Daily Progress text
+    $("#progressPercent").textContent = `${percent}%`;
+    $("#completedCount").textContent = `${stats.done} of ${stats.total} habits completed`;
+    $("#progressBar").style.width = `${percent}%`;
+
+    // SVG Circular Progress Ring (circumference = 2 * PI * 35 ≈ 220)
+    const ringFill = $("#progressRingFill");
+    const ringText = $("#ringPercentText");
+    if (ringFill && ringText) {
+      const circumference = 220;
+      const offset = circumference - (circumference * percent) / 100;
+      ringFill.style.strokeDashoffset = offset;
+      ringText.textContent = `${percent}%`;
+    }
+
+    // Dynamic encouraging caption
+    let caption = "Let's get started";
+    let badgeText = "Active";
+    if (stats.total === 0) {
+      caption = "Add your first habit";
+      badgeText = "No habits";
+    } else if (percent === 100) {
+      caption = "All done! Amazing work! 🎉";
+      badgeText = "Complete";
+    } else if (percent >= 75) {
+      caption = "Almost there, finish strong! 💪";
+      badgeText = "75% Done";
+    } else if (percent >= 50) {
+      caption = "Over halfway through! 🚀";
+      badgeText = "Halfway";
+    } else if (stats.done > 0) {
+      caption = "Keep the momentum going!";
+      badgeText = "In Progress";
+    }
+
+    $("#progressCaption").textContent = caption;
+    $("#progressStatusBadge").textContent = badgeText;
+
+    // Streaks
+    const currentStreaks = habits.map(h => getStreak(h));
+    const bestStreakValue = currentStreaks.length ? Math.max(...currentStreaks) : 0;
+    $("#bestStreak").textContent = bestStreakValue;
+
+    // Highlight which habit holds the best streak
+    const bestHabit = habits.find(h => getStreak(h) === bestStreakValue && bestStreakValue > 0);
+    const bestHabitLabel = $("#bestStreakHabitName");
+    if (bestHabitLabel) {
+      bestHabitLabel.textContent = bestHabit
+        ? `Best streak: ${bestHabit.name}`
+        : "Best active habit streak";
+    }
+
+    const longestStreaks = habits.map(h => getLongestStreak(h));
+    const longestStreakValue = longestStreaks.length ? Math.max(...longestStreaks) : 0;
+    $("#longestStreak").textContent = longestStreakValue;
+    const cardLongestStreak = $("#cardLongestStreak");
+    if (cardLongestStreak) cardLongestStreak.textContent = longestStreakValue;
+
+    // Quick Stats & Consistency
+    $("#totalHabitsStat").textContent = habits.filter(h => h.isActive !== false).length;
+    $("#completedTodayStat").textContent = stats.done;
+    $("#successRateStat").textContent = `${percent}%`;
+
+    // Total check-ins (all-time completions sum)
+    let totalCompletions = 0;
+    habits.forEach(h => {
+      totalCompletions += completedDatesFor(h).length;
+    });
+    $("#totalCompletions").textContent = totalCompletions;
+
+    // Perfect days count (days where 100% of habits were completed)
+    const uniqueDates = new Set();
+    habits.forEach(h => {
+      completedDatesFor(h).forEach(key => uniqueDates.add(key));
+    });
+
+    let perfectDaysCount = 0;
+    for (const key of uniqueDates) {
+      const dStat = dailyStats(key);
+      if (dStat.total > 0 && dStat.done === dStat.total) {
+        perfectDaysCount++;
+      }
+    }
+    $("#perfectDays").textContent = perfectDaysCount;
+    const breakdown = $("#habitStreakBreakdown");
+    if (breakdown) {
+      breakdown.innerHTML = habits.length
+        ? habits.map(habit => `<div class="habit-streak-row"><span>${escapeHtml(habit.name)}</span><strong>${getLongestStreak(habit)} days</strong></div>`).join("")
+        : `<p class="metric-note">Add habits to see personal bests.</p>`;
+    }
+  }
+
+  // Render habit items in the main routine panel
+  function renderHabits() {
+    const list = $("#habitList");
+    const empty = $("#emptyState");
+    const totalCount = habits.length;
+    const completedCount = habits.filter(h => wasCompleted(h)).length;
+    const skippedCount = habits.filter(h => !wasCompleted(h) && h.status === "skipped").length;
+    const pendingCount = totalCount - completedCount - skippedCount;
+
+    // Update filter count badges
+    $("#habitBadge").textContent = totalCount;
+    $("#allFilterCount").textContent = totalCount;
+    $("#pendingFilterCount").textContent = pendingCount;
+    $("#completedFilterCount").textContent = completedCount;
+    $("#skippedFilterCount").textContent = skippedCount;
+
+    // Filter visible habits
+    const visible = habits.filter(h => {
+      const done = wasCompleted(h);
+      if (currentFilter === "pending") return !done && h.status !== "skipped";
+      if (currentFilter === "completed") return done;
+      if (currentFilter === "skipped") return !done && h.status === "skipped";
+      return true;
+    });
+
+    if (visible.length === 0) {
+      list.innerHTML = "";
+      empty.hidden = false;
+      const heading = $("#emptyHeading");
+      const paragraph = $("#emptyParagraph");
+      const actionBtn = $("#emptyActionBtn");
+
+      if (totalCount === 0) {
+        heading.textContent = "Your routine starts here";
+        paragraph.textContent = "Add a habit you want to build, then check it off as you complete it each day.";
+        actionBtn.textContent = "＋ Create your first habit";
+        actionBtn.onclick = () => openDialog();
+      } else if (currentFilter === "completed") {
+        heading.textContent = "No completed habits yet";
+        paragraph.textContent = "Check off habits from your to-do list and they will appear here.";
+        actionBtn.textContent = "Show all habits";
+        actionBtn.onclick = () => setFilter("all");
+      } else if (currentFilter === "pending") {
+        heading.textContent = "All caught up for today! 🎉";
+        paragraph.textContent = "You have completed every habit in your routine today. Fantastic consistency!";
+        actionBtn.textContent = "View all habits";
+        actionBtn.onclick = () => setFilter("all");
+      } else if (currentFilter === "skipped") {
+        heading.textContent = "No skipped habits today";
+        paragraph.textContent = "Skipped reminders will appear here without extending your streak.";
+        actionBtn.textContent = "Show all habits";
+        actionBtn.onclick = () => setFilter("all");
+      }
+    } else {
+      empty.hidden = true;
+      list.innerHTML = visible.map(habit => {
+        const done = wasCompleted(habit);
+        const skipped = !done && habit.status === "skipped";
+        const streak = getStreak(habit);
+        const targetText = habit.target ? escapeHtml(habit.target) : "";
+        const categoryText = escapeHtml(habit.category || "Personal growth");
+        const scheduleText = habit.selectedDays?.length ? ` · ${escapeHtml(habit.selectedDays.join(", "))}` : "";
+        const reminderText = habit.reminderTime ? ` · 🕒 ${escapeHtml(habit.reminderTime)}` : "";
+
+        return `
+          <article class="habit-item ${done ? "is-complete" : ""}" data-habit-id="${escapeHtml(habit.id)}">
+            <div class="habit-emoji" aria-hidden="true">${escapeHtml(habit.icon || "📚")}</div>
+            <div class="habit-copy">
+              <h3>${escapeHtml(habit.name)}</h3>
+              ${targetText ? `<span class="habit-desc">${targetText}</span>` : ""}
+              <div class="habit-meta">
+                <span class="habit-category-badge">${categoryText}</span>
+                <span class="habit-status-pill">${scheduleText}${reminderText}</span>
+                <span class="habit-streak-badge">🔥 ${streak} day${streak === 1 ? "" : "s"}</span>
+                <span class="habit-status-pill">· ${done ? "Completed today ✓" : skipped ? "Skipped today" : "Pending today"}</span>
+              </div>
+            </div>
+            <div class="habit-actions">
+              <button 
+                class="complete-button" 
+                data-action="toggle" 
+                aria-label="${done ? "Mark incomplete" : "Mark complete"}: ${escapeHtml(habit.name)}" 
+                aria-pressed="${done}"
+                title="${done ? "Mark incomplete" : "Mark complete"}"
+              >${done ? "✓" : ""}</button>
+              <button 
+                class="action-icon-button edit-action" 
+                data-action="edit" 
+                aria-label="Edit ${escapeHtml(habit.name)}" 
+                title="Edit habit"
+              >✎</button>
+              <button 
+                class="action-icon-button delete-action" 
+                data-action="delete" 
+                aria-label="Delete ${escapeHtml(habit.name)}" 
+                title="Delete habit"
+              >×</button>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    // Panel bottom remaining text
+    const remainingTextEl = $("#remainingText");
+    if (remainingTextEl) {
+      if (totalCount === 0) {
+        remainingTextEl.textContent = "No habits created yet";
+      } else if (pendingCount === 0) {
+        remainingTextEl.textContent = "All done! Great work!";
+      } else {
+        remainingTextEl.textContent = `${pendingCount} habit${pendingCount === 1 ? "" : "s"} left today`;
+      }
+    }
+  }
+
+  // Render seven-day completion chart
+  function renderWeeklyChart() {
+    const chart = $("#weeklyChart");
+    if (!chart) return;
+
+    const today = new Date();
+    const days = [];
+
+    // Past 6 days + today = 7 days
+    for (let offset = -6; offset <= 0; offset++) {
+      const d = shiftDate(today, offset);
+      const key = todayKey(d);
+      const stat = dailyStats(key);
+      const isToday = offset === 0;
+      days.push({
+        date: d,
+        key,
+        isToday,
+        percent: stat.percent,
+        done: stat.done,
+        total: stat.total
+      });
+    }
+
+    chart.innerHTML = days.map(day => {
+      const dayName = new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(day.date);
+      const dateNum = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(day.date);
+      const hasHabits = day.total > 0;
+      const barHeight = hasHabits ? Math.max(day.percent, 6) : 6;
+      const tooltip = `${dayName}, ${dateNum}: ${day.done}/${day.total} completed (${day.percent}%)`;
+
+      return `
+        <div class="chart-day ${day.isToday ? "today" : ""}" tabindex="0" aria-label="${escapeHtml(tooltip)}">
+          <div class="chart-tooltip">${escapeHtml(tooltip)}</div>
+          <span class="chart-value">${hasHabits ? `${day.percent}%` : "0%"}</span>
+          <div class="chart-bar-wrap">
+            <div 
+              class="chart-bar ${day.percent > 0 ? "has-value" : ""}" 
+              style="height: ${barHeight}%;"
+            ></div>
+          </div>
+          <span class="chart-day-label">${escapeHtml(dayName)}</span>
+          <span class="chart-date-sub">${escapeHtml(dateNum.split(" ")[0])}</span>
+        </div>
+      `;
+    }).join("");
+
+    // Calculate 7-day average
+    const daysWithData = days.filter(d => d.total > 0);
+    const average = daysWithData.length
+      ? Math.round(daysWithData.reduce((sum, d) => sum + d.percent, 0) / daysWithData.length)
+      : 0;
+    $("#weeklyAverage").textContent = `${average}% avg.`;
+  }
+
+  // Full dashboard re-render
+  function render() {
+    renderHeader();
+    renderSummary();
+    renderHabits();
+    renderWeeklyChart();
+  }
+
+  // Set active habit filter
+  function setFilter(filter) {
+    currentFilter = filter;
+    $$(".filter-chip").forEach(chip => {
+      const isActive = chip.dataset.filter === filter;
+      chip.classList.toggle("active", isActive);
+      chip.setAttribute("aria-selected", isActive);
+    });
+    renderHabits();
+  }
+
+  // Toast notification
+  function showToast(message) {
+    const toast = $("#toast");
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toast.classList.remove("show");
+    }, 2400);
+  }
+
+  function getNotificationState() {
+    try {
+      return JSON.parse(localStorage.getItem(NOTIFICATION_SENT_KEY) || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function rememberNotification(key) {
+    try {
+      const state = getNotificationState();
+      state[key] = Date.now();
+      const cutoff = Date.now() - 7 * 86400000;
+      Object.keys(state).forEach(item => {
+        if (state[item] < cutoff) delete state[item];
+      });
+      localStorage.setItem(NOTIFICATION_SENT_KEY, JSON.stringify(state));
+    } catch (_) {
+      // Notification deduplication remains in-memory/browser-session safe.
+    }
+  }
+
+  function setNotificationStatus(message) {
+    const status = $("#notificationStatus");
+    if (status) status.textContent = message;
+  }
+
+  async function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return null;
+    try {
+      return await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+    } catch (error) {
+      console.error("Service worker registration failed:", error);
+      return null;
+    }
+  }
+
+  async function syncFromIndexedDB() {
+    if (!currentUser) return;
+    const mirroredHabits = await HabitFlowDB.getAll(currentUser.id);
+    if (!mirroredHabits.length) return;
+    const mirroredById = new Map(mirroredHabits.map(record => [record.id, record]));
+    const changed = habits.some(habit => {
+      const mirrored = mirroredById.get(habit.id);
+      return mirrored && Number(mirrored.updatedAt) > Number(habit.updatedAt || 0);
+    });
+    if (!changed) return;
+    habits = habits.map(habit => {
+      const mirrored = mirroredById.get(habit.id);
+      return mirrored && Number(mirrored.updatedAt) > Number(habit.updatedAt || 0)
+        ? { ...habit, ...mirrored }
+        : habit;
+    });
+    try {
+      localStorage.setItem(localHabitsKey(), JSON.stringify(habits));
+    } catch (_) {}
+    render();
+  }
+
+  async function enableNotifications() {
+    if (!("serviceWorker" in navigator)) {
+      setNotificationStatus("Service workers are not supported here.");
+      showToast("Offline notifications are not supported here.");
+      return false;
+    }
+    if (!("Notification" in window)) {
+      setNotificationStatus("Browser notifications are not supported here.");
+      showToast("Notifications are not supported by this browser.");
+      return false;
+    }
+    const permission = Notification.permission === "default"
+      ? await Notification.requestPermission()
+      : Notification.permission;
+    if (permission !== "granted") {
+      setNotificationStatus("Notifications are blocked. Allow them in browser settings.");
+      showToast("Notification permission was not granted.");
+      return false;
+    }
+    setNotificationStatus("Reminders enabled, including when HabitFlow is closed.");
+    showToast("Habit reminders enabled.");
+    checkReminders();
+    return true;
+  }
+
+  async function sendTestNotification() {
+    if (!("serviceWorker" in navigator)) {
+      setNotificationStatus("Service workers are not supported here.");
+      return;
+    }
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+      void enableNotifications().then(enabled => {
+        if (enabled) void sendTestNotification();
+      });
+      return;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    await registration.showNotification("HabitFlow test reminder", {
+      body: "Notifications are working on this device.",
+      tag: "habitflow-test",
+      requireInteraction: true,
+      actions: [
+        { action: "done", title: "✅ Done" },
+        { action: "snooze", title: "⏰ Snooze" },
+        { action: "skip", title: "⏭️ Skip" }
+      ],
+      data: { id: habits[0]?.id || "", title: "HabitFlow test reminder" }
+    });
+    setNotificationStatus("Test notification sent.");
+  }
+
+  async function checkReminders() {
+    if (!currentUser || !("Notification" in window) || Notification.permission !== "granted") return;
+    const now = new Date();
+    const dateKey = todayKey(now);
+    const timeKey = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const dayLabel = DAY_LABELS[now.getDay()];
+    const sent = getNotificationState();
+
+    const registration = await navigator.serviceWorker.ready;
+    habits
+      .filter(habit =>
+        habit.isActive !== false &&
+        habit.reminderTime === timeKey &&
+        habit.reminderTime &&
+        !wasCompleted(habit, dateKey) &&
+        !skippedDatesFor(habit).includes(dateKey) &&
+        (!habit.selectedDays?.length || habit.selectedDays.includes(dayLabel))
+      )
+      .forEach(async habit => {
+        const key = `${dateKey}:${habit.id}`;
+        if (sent[key]) return;
+        await registration.showNotification(`Habit reminder: ${habit.name}`, {
+          body: habit.target || "Keep your routine going.",
+          tag: key,
+          requireInteraction: true,
+          actions: [
+            { action: "done", title: "✅ Done" },
+            { action: "snooze", title: "⏰ Snooze" },
+            { action: "skip", title: "⏭️ Skip" }
+          ],
+          data: { id: habit.id, title: `Habit reminder: ${habit.name}`, body: habit.target || "Keep your routine going." }
+        });
+        rememberNotification(key);
+      });
+  }
+
+  function startReminderChecks() {
+    clearInterval(reminderTimer);
+    reminderTimer = window.setInterval(checkReminders, 20000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) checkReminders();
+    });
+    window.addEventListener("focus", checkReminders);
+    checkReminders();
+  }
+
+  // --- Modal Dialog (Add / Edit Habit) ---
+  function openDialog(habit = null) {
+    const dialog = $("#habitDialog");
+    if (!dialog) return;
+
+    editingHabitId = habit ? habit.id : null;
+    $("#dialogTitle").textContent = habit ? "Edit habit" : "Add a new habit";
+    $("#saveHabitBtn").textContent = habit ? "Update habit" : "Save habit";
+    $("#habitName").value = habit ? habit.name : "";
+    $("#habitTarget").value = habit ? (habit.target || "") : "";
+    $("#habitCategory").value = habit ? habit.category : "Health & fitness";
+    $("#habitReminder").value = habit ? (habit.reminderTime || "") : "";
+    $$("#habitDays input").forEach(input => {
+      input.checked = Boolean(habit?.selectedDays?.includes(input.value));
+    });
+
+    selectedIcon = habit ? (habit.icon || "🏃") : "🏃";
+    $$(".icon-choice").forEach(btn => {
+      btn.classList.toggle("selected", btn.dataset.icon === selectedIcon);
+    });
+
+    dialog.showModal();
+    setTimeout(() => {
+      $("#habitName").focus();
+    }, 60);
+  }
+
+  function closeDialog() {
+    const dialog = $("#habitDialog");
+    if (dialog && dialog.open) {
+      dialog.close();
+    }
+    $("#habitForm").reset();
+    editingHabitId = null;
+  }
+
+  // --- Theme Toggle Logic ---
+  function updateThemeButtons() {
+    const isDark = document.documentElement.dataset.theme === "dark";
+    const label = isDark ? "Switch to light mode" : "Switch to dark mode";
+    const icon = isDark ? "☼" : "☾";
+
+    ["#themeToggle", "#themeToggleSide"].forEach(sel => {
+      const btn = $(sel);
+      if (btn) {
+        btn.textContent = icon;
+        btn.title = label;
+        btn.setAttribute("aria-label", label);
+      }
+    });
+
+    const meta = $('meta[name="theme-color"]');
+    if (meta) {
+      meta.content = isDark ? "#0e101a" : "#f5f7fb";
+    }
+  }
+
+  function toggleTheme() {
+    const current = document.documentElement.dataset.theme;
+    const next = current === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch (_) {}
+    updateThemeButtons();
+    showToast(`Switched to ${next} mode`);
+  }
+
+  function initTheme() {
+    let savedTheme = "light";
+    try {
+      savedTheme = localStorage.getItem(THEME_KEY);
+    } catch (_) {}
+
+    if (!savedTheme) {
+      const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      savedTheme = prefersDark ? "dark" : "light";
+    }
+
+    document.documentElement.dataset.theme = savedTheme;
+    updateThemeButtons();
+  }
+
+  function navigateToView(view) {
+    const labels = { overview: "Overview", habits: "My habits", insights: "Weekly progress", stats: "Statistics", settings: "Profile & settings" };
+    const targetId = view === "overview" ? "overview" : view;
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    $$(".nav-link").forEach(link => {
+      const active = link.dataset.nav === view;
+      link.classList.toggle("active", active);
+      link.setAttribute("aria-current", active ? "page" : "false");
+    });
+    const breadcrumb = $(".breadcrumb strong");
+    if (breadcrumb) breadcrumb.textContent = labels[view] || "Overview";
+    if (view === "habits") setFilter("all");
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    const mobileNav = $("#mobileNav");
+    const menuButton = $("#mobileMenuBtn");
+    if (mobileNav) mobileNav.hidden = true;
+    if (menuButton) menuButton.setAttribute("aria-expanded", "false");
+  }
+
+  function printReport() {
+    const report = $("#printReport");
+    if (!report) return;
+    const today = new Date();
+    const displayName = currentUser?.profile?.full_name || currentUser?.profile?.username || "HabitFlow member";
+    const stats = dailyStats();
+    const currentStreak = habits.length ? Math.max(...habits.map(getStreak)) : 0;
+    const longestStreak = habits.length ? Math.max(...habits.map(getLongestStreak)) : 0;
+    const totalCompletions = habits.reduce((sum, habit) => sum + completedDatesFor(habit).length, 0);
+    const totalSkips = habits.reduce((sum, habit) => sum + skippedDatesFor(habit).length, 0);
+    const weekStart = shiftDate(today, -6);
+    const newThisWeek = habits.filter(habit => String(habit.createdAt || "").slice(0, 10) >= todayKey(weekStart)).length;
+    const rows = [];
+    for (let offset = -6; offset <= 0; offset++) {
+      const date = shiftDate(today, offset);
+      const key = todayKey(date);
+      const completed = habits.filter(habit => completedDatesFor(habit).includes(key)).map(habit => habit.name);
+      const skipped = habits.filter(habit => skippedDatesFor(habit).includes(key)).map(habit => habit.name);
+      const added = habits.filter(habit => String(habit.createdAt || "").slice(0, 10) === key).map(habit => habit.name);
+      rows.push(`<tr><td>${escapeHtml(key)}<br><small>${escapeHtml(new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date))}</small></td><td>${escapeHtml(completed.join(", ") || "-")}</td><td>${escapeHtml(skipped.join(", ") || "-")}</td><td>${escapeHtml(added.join(", ") || "-")}</td></tr>`);
+    }
+    const performanceRows = habits.map(habit => `<tr><td>${escapeHtml(habit.name)}</td><td>${escapeHtml(String(habit.createdAt || "").slice(0, 10) || "-")}</td><td>${getStreak(habit)}</td><td>${getLongestStreak(habit)}</td><td>${completedDatesFor(habit).length}</td><td>${skippedDatesFor(habit).length}</td></tr>`).join("");
+    report.innerHTML = `
+      <header class="report-header"><div><strong>HabitFlow</strong><h1>Weekly activity report</h1></div><div><p>${escapeHtml(displayName)}</p><p>${escapeHtml(currentUser?.email || "")}</p><small>Generated ${escapeHtml(today.toLocaleString())}</small></div></header>
+      <section class="report-metrics"><div><b>${habits.length}</b><span>Total habits</span></div><div><b>${stats.percent}%</b><span>Completion rate</span></div><div><b>${currentStreak}</b><span>Current streak</span></div><div><b>${longestStreak}</b><span>Longest streak</span></div><div><b>${totalCompletions}</b><span>Total completions</span></div><div><b>${totalSkips}</b><span>Total skips</span></div><div><b>${newThisWeek}</b><span>New this week</span></div></section>
+      <h2>7-day breakdown</h2><table><thead><tr><th>Date</th><th>Completed</th><th>Skipped</th><th>Newly added</th></tr></thead><tbody>${rows.join("")}</tbody></table>
+      <h2>All-time habit performance</h2><table><thead><tr><th>Habit</th><th>Created</th><th>Current</th><th>Longest</th><th>Done</th><th>Skipped</th></tr></thead><tbody>${performanceRows || `<tr><td colspan="6">No habits yet.</td></tr>`}</tbody></table>`;
+    report.classList.add("is-printing");
+    window.setTimeout(() => window.print(), 50);
+    window.onafterprint = () => report.classList.remove("is-printing");
+  }
+
+  async function handleLogout() {
+    try { await logoutUser(); } catch (error) { console.error("Logout failed:", error); showToast("Could not sign out. Please try again."); }
+  }
+
+  // --- Event Listeners Setup ---
+
+  // Habit list interactions (Complete toggle, Edit, Delete)
+  $("#habitList").addEventListener("click", async event => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+
+    const item = button.closest("[data-habit-id]");
+    const habitId = item?.dataset.habitId;
+    const habit = habits.find(h => h.id === habitId);
+    if (!habit) return;
+
+    const action = button.dataset.action;
+
+    if (action === "toggle") {
+      const today = todayKey();
+      const nextCompleted = !wasCompleted(habit, today);
+      habit.completedDates = completedDatesFor(habit).filter(date => date !== today);
+      if (nextCompleted) habit.completedDates.push(today);
+      habit.skippedDates = skippedDatesFor(habit).filter(date => date !== today);
+      habit.status = nextCompleted ? "completed" : "pending";
+      habit.updatedAt = Date.now();
+      render();
+      try {
+        await saveHabits();
+      } catch (error) {
+        habit.completedDates = completedDatesFor(habit).filter(date => date !== today);
+        if (!nextCompleted) habit.completedDates.push(today);
+        console.error("Failed to update completion:", error);
+        render();
+        showToast("Completion could not be saved.");
+        return;
+      }
+      const status = nextCompleted ? "Habit completed! 🎉" : "Completion undone";
+      showToast(status);
+    } else if (action === "edit") {
+      openDialog(habit);
+    } else if (action === "delete") {
+      const confirmed = window.confirm(`Delete "${habit.name}" and all of its recorded history?`);
+      if (confirmed) {
+        habits = habits.filter(h => h.id !== habit.id);
+        void HabitFlowDB.remove(currentUser.id, habit.id);
+        void saveHabits();
+        render();
+        showToast("Habit deleted");
+      }
+    }
+  });
+
+  // Filter chips
+  $$(".filter-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      setFilter(chip.dataset.filter);
+    });
+  });
+
+  // Add habit triggers
+  $("#addHabitTop")?.addEventListener("click", () => openDialog());
+  $("#addHabitInline")?.addEventListener("click", () => openDialog());
+
+  // Dialog controls
+  $("#closeDialog")?.addEventListener("click", closeDialog);
+  $("#cancelDialog")?.addEventListener("click", closeDialog);
+
+  // Icon picker selection
+  $("#iconPicker")?.addEventListener("click", event => {
+    const choice = event.target.closest(".icon-choice");
+    if (!choice) return;
+    selectedIcon = choice.dataset.icon;
+    $$(".icon-choice").forEach(btn => {
+      btn.classList.toggle("selected", btn === choice);
+    });
+  });
+
+  // Form submit handler
+  $("#habitForm")?.addEventListener("submit", event => {
+    event.preventDefault();
+    const nameInput = $("#habitName");
+    const name = nameInput.value.trim();
+    if (!name) {
+      nameInput.focus();
+      return;
+    }
+
+    const target = $("#habitTarget").value.trim();
+    const category = $("#habitCategory").value;
+    const selectedDays = Array.from($("#habitDays").querySelectorAll("input:checked"))
+      .map(input => input.value);
+
+    if (editingHabitId) {
+      const habit = habits.find(h => h.id === editingHabitId);
+      if (habit) {
+        habit.name = name;
+        habit.target = target;
+        habit.icon = selectedIcon;
+        habit.category = category;
+        habit.selectedDays = selectedDays;
+        habit.reminderTime = $("#habitReminder").value;
+        habit.updatedAt = Date.now();
+        showToast("Habit updated successfully!");
+      }
+    } else {
+      const newHabit = {
+        id: makeId(),
+        name,
+        target,
+        icon: selectedIcon,
+        category,
+        reminderTime: $("#habitReminder").value,
+        selectedDays,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: Date.now(),
+        completedDates: [],
+        skippedDates: [],
+        history: {}
+      };
+      habits.unshift(newHabit);
+      showToast("New habit added to routine!");
+    }
+
+    void saveHabits();
+    closeDialog();
+    setFilter("all");
+    render();
+  });
+
+  // Dialog light-dismiss (clicking outside modal dialog box)
+  // Uses bounding client rect to prevent accidental closes on dialog padding or selection drags
+  const dialogEl = $("#habitDialog");
+  if (dialogEl) {
+    let pressedOutside = false;
+    const isOutside = (e) => {
+      const rect = dialogEl.getBoundingClientRect();
+      return (
+        e.clientX < rect.left ||
+        e.clientX > rect.right ||
+        e.clientY < rect.top ||
+        e.clientY > rect.bottom
+      );
+    };
+
+    dialogEl.addEventListener("pointerdown", e => {
+      pressedOutside = isOutside(e);
+    });
+
+    dialogEl.addEventListener("pointerup", e => {
+      if (pressedOutside && isOutside(e)) {
+        closeDialog();
+      }
+      pressedOutside = false;
+    });
+
+    dialogEl.addEventListener("cancel", event => {
+      event.preventDefault();
+      closeDialog();
+    });
+  }
+
+  // Theme toggle buttons
+  $("#themeToggle")?.addEventListener("click", toggleTheme);
+  $("#themeToggleSide")?.addEventListener("click", toggleTheme);
+
+  // Reset to Sample Habits helper
+  $("#resetDemoBtn")?.addEventListener("click", () => {
+    const confirmed = window.confirm("Reset dashboard to presentation sample habits? This will restore realistic demo data.");
+    if (confirmed) {
+      habits = generateStarterHabits();
+      void saveHabits();
+      setFilter("all");
+      render();
+      showToast("Restored presentation demo habits!");
+    }
+  });
+
+  $("#sampleWeekBtn")?.addEventListener("click", () => {
+    habits = generateSampleWeekHabits();
+    void saveHabits();
+    setFilter("all");
+    render();
+    showToast("Loaded a full sample week.");
+  });
+
+  // Clear all data helper
+  $("#clearDataBtn")?.addEventListener("click", () => {
+    const confirmed = window.confirm("Are you sure you want to delete ALL habits and history? This cannot be undone.");
+    if (confirmed) {
+      habits = [];
+      void HabitFlowDB.removeAll(currentUser.id);
+      clearUserHabits(currentUser.id).catch(error => {
+        console.error("Failed to clear habits from SQLite:", error);
+        showToast("Could not clear your habits.");
+      });
+      setFilter("all");
+      render();
+      showToast("All habits cleared.");
+    }
+  });
+
+  ["#logoutBtn", "#sidebarLogoutBtn", "#topbarLogoutBtn"].forEach(selector => $(selector)?.addEventListener("click", handleLogout));
+
+  $("#mobileMenuBtn")?.addEventListener("click", () => {
+    const mobileNav = $("#mobileNav");
+    const button = $("#mobileMenuBtn");
+    const open = mobileNav.hidden;
+    mobileNav.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+  });
+
+  $("#settingsNameForm")?.addEventListener("submit", event => {
+    event.preventDefault();
+    const value = $("#settingsNameInput").value.trim();
+    if (!value) return;
+    localStorage.setItem(`${DISPLAY_NAME_KEY}:${currentUser.id}`, value);
+    renderHeader();
+    showToast("Display name updated");
+  });
+
+  $("#exportDataBtn")?.addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), habits }, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "habitflow-data.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+
+  $("#settingsClearDataBtn")?.addEventListener("click", () => $("#clearDataBtn")?.click());
+  ["#downloadReportBtn", "#downloadReportStatsBtn", "#downloadReportSettingsBtn"].forEach(selector => $(selector)?.addEventListener("click", printReport));
+
+  $("#notificationBtn")?.addEventListener("click", sendTestNotification);
+
+  $$(".nav-link").forEach(link => {
+    link.addEventListener("click", event => {
+      event.preventDefault();
+      navigateToView(link.dataset.nav);
+    });
+  });
+
+  async function initialize() {
+    initTheme();
+    const user = await checkSession();
+    if (!user) {
+      window.location.href = "auth.html";
+      return;
+    }
+    currentUser = user;
+    habits = await loadHabits();
+    render();
+    await registerServiceWorker();
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) void syncFromIndexedDB();
+    });
+    startReminderChecks();
+  }
+
+  void initialize();
+})();

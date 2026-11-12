@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0F172A">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <title>HabitFlow | Sign in</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="auth.css">
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <section class="auth-showcase" aria-label="HabitFlow preview">
+      <a class="auth-brand" href="auth.html" aria-label="HabitFlow home">
+        <img src="icon.svg" alt="">
+        <span>HabitFlow</span>
+      </a>
+      <div class="auth-showcase-copy">
+        <p class="auth-kicker">A quieter way to build momentum</p>
+        <h1>Build consistency without the noise.</h1>
+        <p>Daily check-ins, useful streaks, and a clear view of the work that compounds.</p>
+        <div class="auth-preview" aria-label="Animated habit preview">
+          <div class="preview-header"><span>Today</span><span>Routine</span></div>
+          <div class="preview-habit">
+            <div class="preview-habit-copy"><strong>Morning Code Review</strong><span>Review one pull request</span></div>
+            <span class="preview-check" id="preview-check" aria-label="Preview completion">✓</span>
+          </div>
+          <div class="preview-streak">🔥 <span id="preview-streak">07</span> day streak</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="auth-form-column" aria-label="Account access">
+      <div class="auth-card">
+        <div class="auth-card-header">
+          <h2 id="auth-heading">Welcome back</h2>
+          <p id="auth-subheading">Sign in to continue your daily practice.</p>
+        </div>
+
+        <div class="auth-tabs" id="auth-tabs" role="tablist" aria-label="Account access mode">
+          <button id="tab-login" class="tab-btn active" type="button" role="tab" aria-selected="true">Sign In</button>
+          <button id="tab-register" class="tab-btn" type="button" role="tab" aria-selected="false">Create Account</button>
+        </div>
+
+        <p id="auth-status" class="auth-status" role="status" aria-live="polite"></p>
+        <div id="auth-error" class="auth-message" role="alert" aria-live="assertive"></div>
+
+        <form id="login-form" class="auth-form" novalidate>
+          <div class="input-group">
+            <label for="login-username">Username</label>
+            <input type="text" id="login-username" required autocomplete="username" placeholder="your_username">
+          </div>
+          <div class="input-group">
+            <label for="login-password">Password</label>
+            <div class="input-wrap">
+              <input class="has-toggle" type="password" id="login-password" required autocomplete="current-password" placeholder="Your password">
+              <button class="password-toggle" type="button" data-password-target="login-password" aria-label="Show password">Show</button>
+            </div>
+          </div>
+          <label class="checkbox-row"><input type="checkbox" id="remember-username" checked> Remember my username</label>
+          <button type="submit" class="btn btn-primary">Sign In</button>
+          <button type="button" class="btn btn-demo" id="demo-login">Continue with Demo Account</button>
+        </form>
+
+        <form id="register-form" class="auth-form" hidden novalidate>
+          <div class="input-group">
+            <label for="reg-name">Full Name</label>
+            <input type="text" id="reg-name" required minlength="2" maxlength="80" pattern="[A-Za-z]+([ '\\-][A-Za-z]+)*" autocomplete="name" placeholder="Your full name">
+          </div>
+          <div class="input-group">
+            <label for="reg-username">Username</label>
+            <input type="text" id="reg-username" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_]+" autocomplete="username" placeholder="your_username">
+            <small class="auth-help">Use 3–30 letters, numbers, or underscores.</small>
+          </div>
+          <div class="input-group">
+            <label for="reg-email">Email address</label>
+            <input type="email" id="reg-email" required maxlength="254" autocomplete="email" placeholder="name@example.com">
+          </div>
+          <div class="input-group">
+            <label for="reg-password">Password</label>
+            <div class="input-wrap">
+              <input class="has-toggle" type="password" id="reg-password" required minlength="8" maxlength="128" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])\S{8,128}" autocomplete="new-password" placeholder="Create a password">
+              <button class="password-toggle" type="button" data-password-target="reg-password" aria-label="Show password">Show</button>
+            </div>
+          </div>
+          <div class="input-group">
+            <label for="reg-confirm-password">Confirm password</label>
+            <div class="input-wrap">
+              <input class="has-toggle" type="password" id="reg-confirm-password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Repeat your password">
+              <button class="password-toggle" type="button" data-password-target="reg-confirm-password" aria-label="Show password">Show</button>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Create Account</button>
+          <button type="button" class="btn btn-demo" id="demo-login-register">Continue with Demo Account</button>
+        </form>
+        <p class="auth-footer">Your data stays in this browser.</p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { loginUser, registerUser, checkSession } from './auth.js';
+
+    const $ = id => document.getElementById(id);
+    const loginForm = $('login-form');
+    const registerForm = $('register-form');
+    const tabs = $('auth-tabs');
+    const errorBox = $('auth-error');
+    const statusBox = $('auth-status');
+
+    function setMessage(message, type = 'error') {
+      errorBox.textContent = type === 'error' ? message : '';
+      statusBox.textContent = type === 'success' ? message : '';
+      errorBox.hidden = type !== 'error';
+      statusBox.hidden = type !== 'success';
+    }
+
+    function showForm(type) {
+      const isLogin = type === 'login';
+      loginForm.hidden = !isLogin;
+      registerForm.hidden = isLogin;
+      $('tab-login').classList.toggle('active', isLogin);
+      $('tab-register').classList.toggle('active', !isLogin);
+      $('tab-login').setAttribute('aria-selected', String(isLogin));
+      $('tab-register').setAttribute('aria-selected', String(!isLogin));
+      tabs.classList.toggle('register-active', !isLogin);
+      $('auth-heading').textContent = isLogin ? 'Welcome back' : 'Start your practice';
+      $('auth-subheading').textContent = isLogin ? 'Sign in to continue your daily practice.' : 'Create a local account and make today count.';
+      setMessage('');
+      (isLogin ? $('login-username') : $('reg-name')).focus();
+    }
+
+    function validateForm(form) {
+      const invalid = [...form.elements].find(element => element.willValidate && !element.checkValidity());
+      if (invalid) {
+        invalid.setAttribute('aria-invalid', 'true');
+        invalid.focus();
+        setMessage(invalid.validationMessage || 'Please check the highlighted field.');
+        return false;
+      }
+      [...form.elements].forEach(element => element.removeAttribute('aria-invalid'));
+      return true;
+    }
+
+    async function runDemoLogin() {
+      const username = 'demo_evaluator';
+      const password = 'HabitFlowDemo2026!';
+      try {
+        await loginUser(username, password);
+      } catch (_) {
+        await registerUser({ fullName: 'Demo Evaluator', username, email: 'demo@habitflow.local', password });
+      }
+      window.location.href = 'index.html';
+    }
+
+    $('tab-login').addEventListener('click', () => showForm('login'));
+    $('tab-register').addEventListener('click', () => showForm('register'));
+    document.querySelectorAll('.password-toggle').forEach(button => {
+      button.addEventListener('click', () => {
+        const input = $(button.dataset.passwordTarget);
+        const visible = input.type === 'text';
+        input.type = visible ? 'password' : 'text';
+        button.textContent = visible ? 'Show' : 'Hide';
+        button.setAttribute('aria-label', visible ? 'Show password' : 'Hide password');
+      });
+    });
+    [$('demo-login'), $('demo-login-register')].forEach(button => button.addEventListener('click', async () => {
+      button.disabled = true;
+      setMessage('Opening the demo workspace…', 'success');
+      try { await runDemoLogin(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Demo login failed.'); button.disabled = false; }
+    }));
+
+    loginForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!validateForm(loginForm)) return;
+      const username = $('login-username').value.trim();
+      if ($('remember-username').checked) localStorage.setItem('habitflow-login-username', username);
+      else localStorage.removeItem('habitflow-login-username');
+      try {
+        await loginUser(username, $('login-password').value);
+        window.location.href = 'index.html';
+      } catch (error) { setMessage(error instanceof Error ? error.message : 'Login failed. Please try again.'); }
+    });
+
+    registerForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!validateForm(registerForm)) return;
+      if ($('reg-password').value !== $('reg-confirm-password').value) {
+        $('reg-confirm-password').setAttribute('aria-invalid', 'true');
+        setMessage('Passwords do not match.');
+        return;
+      }
+      try {
+        await registerUser({
+          fullName: $('reg-name').value.trim(),
+          username: $('reg-username').value.trim(),
+          email: $('reg-email').value.trim().toLowerCase(),
+          password: $('reg-password').value
+        });
+        window.location.href = 'index.html';
+      } catch (error) { setMessage(error instanceof Error ? error.message : 'Registration failed. Please try again.'); }
+    });
+
+    const savedUsername = localStorage.getItem('habitflow-login-username');
+    if (savedUsername) $('login-username').value = savedUsername;
+    checkSession().then(user => { if (user) window.location.href = 'index.html'; }).catch(() => {});
+
+    let previewDone = false;
+    let previewStreak = 7;
+    window.setInterval(() => {
+      previewDone = !previewDone;
+      if (previewDone) previewStreak += 1;
+      $('preview-check').classList.toggle('is-done', previewDone);
+      $('preview-streak').textContent = String(previewStreak).padStart(2, '0');
+    }, 2400);
+  </script>
+</body>
+</html>

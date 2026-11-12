@@ -61,26 +61,31 @@ self.addEventListener("fetch", event => {
   );
 });
 
+const INDIA_TIME_ZONE = "Asia/Kolkata";
+const indiaDateFormatter = new Intl.DateTimeFormat("en-IN", {
+  timeZone: INDIA_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit"
+});
+
 function todayKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const parts = Object.fromEntries(indiaDateFormatter.formatToParts(date)
+    .filter(part => part.type !== "literal")
+    .map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function dateFromKey(key) {
   const [year, month, day] = key.split("-").map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0);
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 }
 
 function shiftDate(date, amount) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount, 12, 0, 0);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + amount, 12, 0, 0));
 }
 
 function isScheduled(habit, date) {
   const selectedDays = Array.isArray(habit.selectedDays) ? habit.selectedDays : [];
   const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return selectedDays.length === 0 || selectedDays.includes(labels[date.getDay()]);
+  return selectedDays.length === 0 || selectedDays.includes(labels[date.getUTCDay()]);
 }
 
 function calculateStreak(habit, referenceKey) {
@@ -133,19 +138,15 @@ self.addEventListener("notificationclick", event => {
 
   event.waitUntil((async () => {
     if (action === "snooze") {
-      await new Promise(resolve => setTimeout(resolve, 10 * 60 * 1000));
-      await self.registration.showNotification(data.title || "Habit reminder", {
-        body: data.body || "Keep your routine going.",
-        tag: `habitflow-snooze-${data.id}`,
-        requireInteraction: true,
-        actions: [
-          { action: "done", title: "✅ Done" },
-          { action: "snooze", title: "⏰ Snooze" },
-          { action: "skip", title: "⏭️ Skip" }
-        ],
-        data
-      });
-      return;
+      const habit = data.id ? await HabitFlowDB.get(data.id) : null;
+      if (habit) {
+        habit.snoozedUntil = Date.now() + 10 * 60 * 1000;
+        habit.updatedAt = Date.now();
+        await HabitFlowDB.put(habit.userId, habit);
+      }
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      clients.forEach(client => client.postMessage({ type: "habitflow-refresh" }));
+      return focusApp();
     }
 
     if ((action === "done" || action === "skip") && data.id) {

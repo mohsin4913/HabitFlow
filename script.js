@@ -41,6 +41,34 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
     return copy;
   };
 
+  const INDIA_TIME_ZONE = "Asia/Kolkata";
+  const indiaFormatter = new Intl.DateTimeFormat("en-IN", {
+    timeZone: INDIA_TIME_ZONE,
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  });
+
+  function indiaNowParts(date = new Date()) {
+    const parts = Object.fromEntries(indiaFormatter.formatToParts(date)
+      .filter(part => part.type !== "literal")
+      .map(part => [part.type, part.value]));
+    return {
+      year: Number(parts.year), month: Number(parts.month), day: Number(parts.day),
+      hour: Number(parts.hour), minute: Number(parts.minute), weekday: parts.weekday,
+      key: `${parts.year}-${parts.month}-${parts.day}`
+    };
+  }
+
+  function indiaCandidateTimestamp(date, reminderTime) {
+    const [hour, minute] = reminderTime.split(":").map(Number);
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, minute) - (5 * 60 + 30) * 60000;
+  }
+
   // Unique ID generator compatible with file:// protocol and secure contexts
   const makeId = () => {
     try {
@@ -114,6 +142,8 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
   let editingHabitId = null;
   let toastTimer = null;
   let reminderTimer = null;
+  const reminderTimeouts = new Map();
+  const remindersInFlight = new Set();
 
   // Save current habits and completion state to SQLite
   async function saveHabits() {
@@ -621,6 +651,73 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
     if (status) status.textContent = message;
   }
 
+  function clearReminderTimeout(habitId) {
+    const timeout = reminderTimeouts.get(habitId);
+    if (timeout) clearTimeout(timeout);
+    reminderTimeouts.delete(habitId);
+  }
+
+  async function fireReminder(habitId, dateKey) {
+    const habit = habits.find(item => item.id === habitId);
+    if (!habit || !currentUser || !("Notification" in window) || Notification.permission !== "granted") return;
+    if (wasCompleted(habit, dateKey) || skippedDatesFor(habit).includes(dateKey)) return;
+    const key = `${dateKey}:${habit.id}`;
+    if (getNotificationState()[key] || remindersInFlight.has(key)) return;
+    remindersInFlight.add(key);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(`Habit reminder: ${habit.name}`, {
+        body: habit.target || "Keep your routine going.",
+        tag: key,
+        requireInteraction: true,
+        actions: [
+          { action: "done", title: "✅ Done" },
+          { action: "snooze", title: "⏰ Snooze (10m)" },
+          { action: "skip", title: "⏭️ Skip" }
+        ],
+        data: { id: habit.id, title: `Habit reminder: ${habit.name}`, body: habit.target || "Keep your routine going." }
+      });
+      rememberNotification(key);
+      habit.snoozedUntil = null;
+    } catch (error) {
+      console.error("Could not show habit reminder:", error);
+    } finally {
+      remindersInFlight.delete(key);
+    }
+    scheduleReminder(habit);
+  }
+
+  function scheduleReminder(habit) {
+    clearReminderTimeout(habit.id);
+    if (habit.isActive === false || !habit.reminderTime || !/^\d{2}:\d{2}$/.test(habit.reminderTime)) return;
+    const now = Date.now();
+    if (Number(habit.snoozedUntil) > now) {
+      const timeout = window.setTimeout(() => void fireReminder(habit.id, indiaNowParts().key), Number(habit.snoozedUntil) - now);
+      reminderTimeouts.set(habit.id, timeout);
+      return;
+    }
+    const current = indiaNowParts();
+    for (let offset = 0; offset <= 7; offset++) {
+      const candidateDate = new Date(Date.UTC(current.year, current.month - 1, current.day + offset, 12));
+      const candidateKey = `${candidateDate.getUTCFullYear()}-${String(candidateDate.getUTCMonth() + 1).padStart(2, "0")}-${String(candidateDate.getUTCDate()).padStart(2, "0")}`;
+      const candidateDay = DAY_LABELS[candidateDate.getUTCDay()];
+      const candidateTime = indiaCandidateTimestamp(candidateDate, habit.reminderTime);
+      if (candidateTime <= now || (habit.selectedDays?.length && !habit.selectedDays.includes(candidateDay))) continue;
+      if (wasCompleted(habit, candidateKey) || skippedDatesFor(habit).includes(candidateKey)) continue;
+      const timeout = window.setTimeout(() => void fireReminder(habit.id, candidateKey), candidateTime - now);
+      reminderTimeouts.set(habit.id, timeout);
+      return;
+    }
+  }
+
+  function scheduleAllReminders() {
+    reminderTimeouts.forEach((timeout, habitId) => {
+      clearTimeout(timeout);
+      reminderTimeouts.delete(habitId);
+    });
+    habits.forEach(scheduleReminder);
+  }
+
   async function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return null;
     try {
@@ -678,76 +775,38 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
     return true;
   }
 
-  async function sendTestNotification() {
-    if (!("serviceWorker" in navigator)) {
-      setNotificationStatus("Service workers are not supported here.");
-      return;
-    }
-    if (!("Notification" in window) || Notification.permission !== "granted") {
-      void enableNotifications().then(enabled => {
-        if (enabled) void sendTestNotification();
-      });
-      return;
-    }
-    const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification("HabitFlow test reminder", {
-      body: "Notifications are working on this device.",
-      tag: "habitflow-test",
-      requireInteraction: true,
-      actions: [
-        { action: "done", title: "✅ Done" },
-        { action: "snooze", title: "⏰ Snooze" },
-        { action: "skip", title: "⏭️ Skip" }
-      ],
-      data: { id: habits[0]?.id || "", title: "HabitFlow test reminder" }
-    });
-    setNotificationStatus("Test notification sent.");
-  }
-
   async function checkReminders() {
     if (!currentUser || !("Notification" in window) || Notification.permission !== "granted") return;
-    const now = new Date();
-    const dateKey = todayKey(now);
-    const timeKey = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const dayLabel = DAY_LABELS[now.getDay()];
-    const sent = getNotificationState();
-
-    const registration = await navigator.serviceWorker.ready;
+    const now = indiaNowParts();
+    const timeKey = `${String(now.hour).padStart(2, "0")}:${String(now.minute).padStart(2, "0")}`;
     habits
       .filter(habit =>
         habit.isActive !== false &&
         habit.reminderTime === timeKey &&
         habit.reminderTime &&
-        !wasCompleted(habit, dateKey) &&
-        !skippedDatesFor(habit).includes(dateKey) &&
-        (!habit.selectedDays?.length || habit.selectedDays.includes(dayLabel))
+        !wasCompleted(habit, now.key) &&
+        !skippedDatesFor(habit).includes(now.key) &&
+        (!habit.selectedDays?.length || habit.selectedDays.includes(now.weekday))
       )
-      .forEach(async habit => {
-        const key = `${dateKey}:${habit.id}`;
-        if (sent[key]) return;
-        await registration.showNotification(`Habit reminder: ${habit.name}`, {
-          body: habit.target || "Keep your routine going.",
-          tag: key,
-          requireInteraction: true,
-          actions: [
-            { action: "done", title: "✅ Done" },
-            { action: "snooze", title: "⏰ Snooze" },
-            { action: "skip", title: "⏭️ Skip" }
-          ],
-          data: { id: habit.id, title: `Habit reminder: ${habit.name}`, body: habit.target || "Keep your routine going." }
-        });
-        rememberNotification(key);
-      });
+      .forEach(habit => void fireReminder(habit.id, now.key));
+    scheduleAllReminders();
   }
 
   function startReminderChecks() {
     clearInterval(reminderTimer);
+    scheduleAllReminders();
     reminderTimer = window.setInterval(checkReminders, 20000);
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) checkReminders();
+      if (!document.hidden) {
+        void syncFromIndexedDB().then(scheduleAllReminders);
+        void checkReminders();
+      }
     });
-    window.addEventListener("focus", checkReminders);
-    checkReminders();
+    window.addEventListener("focus", () => {
+      void syncFromIndexedDB().then(scheduleAllReminders);
+      void checkReminders();
+    });
+    void checkReminders();
   }
 
   // --- Modal Dialog (Add / Edit Habit) ---
@@ -914,6 +973,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       render();
       try {
         await saveHabits();
+        scheduleAllReminders();
       } catch (error) {
         habit.completedDates = completedDatesFor(habit).filter(date => date !== today);
         if (!nextCompleted) habit.completedDates.push(today);
@@ -931,7 +991,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       if (confirmed) {
         habits = habits.filter(h => h.id !== habit.id);
         void HabitFlowDB.remove(currentUser.id, habit.id);
-        void saveHabits();
+        void saveHabits().then(scheduleAllReminders);
         render();
         showToast("Habit deleted");
       }
@@ -1010,7 +1070,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       showToast("New habit added to routine!");
     }
 
-    void saveHabits();
+    void saveHabits().then(scheduleAllReminders);
     closeDialog();
     setFilter("all");
     render();
@@ -1099,7 +1159,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
   $("#settingsClearDataBtn")?.addEventListener("click", () => $("#clearDataBtn")?.click());
   $("#downloadReportBtn")?.addEventListener("click", printReport);
 
-  $("#notificationBtn")?.addEventListener("click", sendTestNotification);
+  $("#notificationBtn")?.addEventListener("click", () => void enableNotifications());
 
   $$(".nav-link").forEach(link => {
     link.addEventListener("click", event => {
@@ -1119,6 +1179,11 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
     habits = await loadHabits();
     render();
     await registerServiceWorker();
+    navigator.serviceWorker.addEventListener("message", event => {
+      if (event.data?.type === "habitflow-refresh") {
+        void syncFromIndexedDB().then(scheduleAllReminders);
+      }
+    });
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) void syncFromIndexedDB();
     });

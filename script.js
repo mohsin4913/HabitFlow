@@ -937,11 +937,23 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       const completed = habits.filter(habit => completedDatesFor(habit).includes(key)).map(habit => habit.name);
       const skipped = habits.filter(habit => skippedDatesFor(habit).includes(key)).map(habit => habit.name);
       const added = habits.filter(habit => String(habit.createdAt || "").slice(0, 10) === key).map(habit => habit.name);
-      rows.push({ date: key, weekday: new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date), completed, skipped, added });
+      const daily = dailyStats(key);
+      rows.push({
+        date: key,
+        weekday: new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date),
+        completed,
+        skipped,
+        added,
+        done: daily.done,
+        total: daily.total,
+        percent: daily.percent
+      });
     }
     const performance = habits.map(habit => ({
       name: habit.name,
       created: String(habit.createdAt || "").slice(0, 10) || "-",
+      frequency: habit.selectedDays?.length ? habit.selectedDays.join(", ") : "Daily",
+      status: wasCompleted(habit) ? "Completed today" : skippedDatesFor(habit).includes(todayKey()) ? "Skipped today" : "Pending today",
       currentStreak: getStreak(habit),
       longestStreak: getLongestStreak(habit),
       completed: completedDatesFor(habit).length,
@@ -951,6 +963,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       displayName,
       email: currentUser?.email || "",
       generatedAt: today.toISOString(),
+      period: { start: todayKey(weekStart), end: todayKey(today) },
       metrics: { habits: habits.length, completionRate: stats.percent, currentStreak, longestStreak, totalCompletions, totalSkips, newThisWeek },
       rows,
       performance
@@ -1003,39 +1016,210 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
 
   function createPdf(report) {
     const { data } = report;
-    const lines = [
-      "HabitFlow - Weekly activity report",
-      `User: ${data.displayName}`,
-      `Email: ${data.email}`,
-      `Generated: ${new Date(data.generatedAt).toLocaleString()}`,
-      "",
-      `Total habits: ${data.metrics.habits}`,
-      `Completion rate: ${data.metrics.completionRate}%`,
-      `Current streak: ${data.metrics.currentStreak}`,
-      `Longest streak: ${data.metrics.longestStreak}`,
-      `Total completions: ${data.metrics.totalCompletions}`,
-      `Total skips: ${data.metrics.totalSkips}`,
-      `New this week: ${data.metrics.newThisWeek}`,
-      "",
-      "7-day breakdown"
+    const width = 595;
+    const height = 842;
+    const margin = 42;
+    const contentWidth = width - margin * 2;
+    const pages = [[]];
+    let page = pages[0];
+    let cursor = height - 48;
+
+    const colors = {
+      ink: "0.09 0.13 0.20",
+      slate: "0.29 0.35 0.42",
+      muted: "0.42 0.47 0.54",
+      blue: "0.11 0.31 0.85",
+      paleBlue: "0.93 0.95 1",
+      line: "0.87 0.89 0.92",
+      pale: "0.98 0.98 0.99",
+      green: "0.08 0.47 0.34"
+    };
+
+    const text = (x, y, value, size = 9, color = colors.ink, bold = false) => {
+      page.push(`${color} rg BT /${bold ? "F2" : "F1"} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${pdfText(value)}) Tj ET`);
+    };
+    const fillRect = (x, y, w, h, color) => {
+      page.push(`${color} rg ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`);
+    };
+    const strokeRect = (x, y, w, h, color) => {
+      page.push(`${color} RG 0.7 w ${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`);
+    };
+    const line = (x1, y1, x2, y2, color = colors.line, thickness = 0.7) => {
+      page.push(`${color} RG ${thickness} w ${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
+    };
+    const wrap = (value, maxChars) => {
+      const words = String(value ?? "").split(/\s+/);
+      const lines = [];
+      let current = "";
+      words.forEach(word => {
+        if (!word) return;
+        if (word.length > maxChars) {
+          if (current) lines.push(current);
+          for (let index = 0; index < word.length; index += maxChars) lines.push(word.slice(index, index + maxChars));
+          current = "";
+        } else if ((current ? current.length + 1 : 0) + word.length <= maxChars) {
+          current = current ? `${current} ${word}` : word;
+        } else {
+          lines.push(current);
+          current = word;
+        }
+      });
+      if (current || !lines.length) lines.push(current || "-");
+      return lines;
+    };
+    const wrappedText = (x, y, value, maxChars, size = 8, color = colors.slate, leading = 11, bold = false) => {
+      const lines = wrap(value, maxChars);
+      lines.forEach((item, index) => text(x, y - index * leading, item, size, color, bold));
+      return lines.length * leading;
+    };
+    const newPage = () => {
+      pages.push([]);
+      page = pages[pages.length - 1];
+      cursor = height - 52;
+    };
+    const ensure = required => {
+      if (cursor - required < 54) newPage();
+    };
+    const sectionTitle = title => {
+      ensure(28);
+      text(margin, cursor, title.toUpperCase(), 10, colors.blue, true);
+      cursor -= 8;
+      line(margin, cursor, width - margin, cursor, colors.blue, 1.2);
+      cursor -= 19;
+    };
+    const drawTableHeader = (columns, widths) => {
+      const headerHeight = 22;
+      fillRect(margin, cursor - headerHeight + 4, contentWidth, headerHeight, colors.ink);
+      let x = margin;
+      columns.forEach((column, index) => {
+        text(x + 7, cursor - 10, column, 7.5, "1 1 1", true);
+        x += widths[index];
+      });
+      cursor -= headerHeight;
+    };
+    const drawTableRow = (values, widths, options = {}) => {
+      const linesByCell = values.map((value, index) => wrap(value, Math.max(8, Math.floor(widths[index] / 4.7))));
+      const rowHeight = Math.max(24, Math.min(48, Math.max(...linesByCell.map(items => items.length)) * 10 + 12));
+      if (cursor - rowHeight < 54) {
+        newPage();
+        if (options.header) {
+          sectionTitle(options.title);
+          drawTableHeader(options.header, widths);
+        }
+      }
+      if (options.index % 2 === 0) fillRect(margin, cursor - rowHeight + 4, contentWidth, rowHeight, colors.pale);
+      let x = margin;
+      values.forEach((value, index) => {
+        linesByCell[index].slice(0, 4).forEach((item, lineIndex) => {
+          const color = index === 2 && String(value).startsWith("Completed") ? colors.green : colors.slate;
+          text(x + 7, cursor - 11 - lineIndex * 10, item, 7.5, color, index === 0);
+        });
+        x += widths[index];
+      });
+      line(margin, cursor - rowHeight + 4, width - margin, cursor - rowHeight + 4);
+      cursor -= rowHeight;
+    };
+
+    fillRect(0, 0, width, height, "0.995 0.995 0.99");
+    text(margin, cursor, "HABITFLOW", 13, colors.blue, true);
+    text(margin, cursor - 23, "HABIT ANALYTICS REPORT", 22, colors.ink, true);
+    text(margin, cursor - 43, "A clear view of the consistency that compounds.", 9, colors.slate);
+    text(width - margin - 155, cursor - 4, `Generated ${new Date(data.generatedAt).toLocaleString()}`, 7.5, colors.muted);
+    text(width - margin - 155, cursor - 17, `Period ${data.period?.start || data.rows?.[0]?.date || "-"} to ${data.period?.end || data.rows?.at(-1)?.date || "-"}`, 7.5, colors.muted);
+    text(width - margin - 155, cursor - 30, data.displayName || "HabitFlow member", 8.5, colors.ink, true);
+    line(margin, cursor - 57, width - margin, cursor - 57, colors.blue, 1.4);
+    cursor -= 82;
+
+    text(margin, cursor, "EXECUTIVE SUMMARY", 10, colors.blue, true);
+    cursor -= 16;
+    const kpis = [
+      ["HABITS", data.metrics.habits],
+      ["COMPLETED", data.rows?.at(-1)?.done ?? 0],
+      ["PENDING", Math.max((data.rows?.at(-1)?.total ?? data.metrics.habits) - (data.rows?.at(-1)?.done ?? 0), 0)],
+      ["COMPLETION", `${data.metrics.completionRate}%`],
+      ["BEST STREAK", `${data.metrics.longestStreak} days`]
     ];
-    data.rows.forEach(row => lines.push(`${row.date} (${row.weekday}) | Completed: ${row.completed.join(", ") || "-"} | Skipped: ${row.skipped.join(", ") || "-"} | Added: ${row.added.join(", ") || "-"}`));
-    lines.push("", "All-time habit performance");
-    data.performance.forEach(item => lines.push(`${item.name} | Created: ${item.created} | Current: ${item.currentStreak} | Longest: ${item.longestStreak} | Done: ${item.completed} | Skipped: ${item.skipped}`));
-    const visibleLines = lines.slice(0, 52);
-    const stream = ["BT", "/F1 10 Tf", "50 760 Td"];
-    visibleLines.forEach((line, index) => {
-      if (index) stream.push("0 -14 Td");
-      stream.push(`(${pdfText(line)}) Tj`);
+    const cardGap = 8;
+    const cardWidth = (contentWidth - cardGap * 4) / 5;
+    kpis.forEach((kpi, index) => {
+      const x = margin + index * (cardWidth + cardGap);
+      fillRect(x, cursor - 58, cardWidth, 58, index === 3 ? colors.blue : colors.paleBlue);
+      strokeRect(x, cursor - 58, cardWidth, 58, index === 3 ? colors.blue : colors.line);
+      text(x + 8, cursor - 18, kpi[0], 6.5, index === 3 ? "1 1 1" : colors.muted, true);
+      text(x + 8, cursor - 42, String(kpi[1]), 15, index === 3 ? "1 1 1" : colors.ink, true);
     });
-    stream.push("ET");
+    cursor -= 82;
+
+    sectionTitle("Habit performance");
+    const tableWidths = [190, 125, 112, 84];
+    drawTableHeader(["HABIT", "FREQUENCY", "STATUS", "STREAK"], tableWidths);
+    const performance = Array.isArray(data.performance) ? data.performance : [];
+    performance.forEach((item, index) => drawTableRow([
+      item.name || "Untitled habit",
+      item.frequency || "Daily",
+      item.status || (item.completed ? "Completed" : "Pending"),
+      `${item.currentStreak || 0} days`
+    ], tableWidths, { index, header: ["HABIT", "FREQUENCY", "STATUS", "STREAK"], title: "Habit performance" }));
+    if (!performance.length) {
+      drawTableRow(["No habits recorded", "-", "Pending", "0 days"], tableWidths, { index: 0 });
+    }
+
+    sectionTitle("Progress analytics");
+    ensure(150);
+    const chartTop = cursor;
+    text(margin, chartTop, "7-DAY COMPLETION RATE", 8, colors.slate, true);
+    const chartX = margin;
+    const chartY = chartTop - 112;
+    const chartW = contentWidth;
+    const chartH = 88;
+    line(chartX, chartY, chartX + chartW, chartY, colors.line);
+    line(chartX, chartY, chartX, chartY + chartH, colors.line);
+    (data.rows || []).forEach((row, index, allRows) => {
+      const percent = Number(row.percent ?? (row.total ? Math.round((row.done / row.total) * 100) : 0));
+      const slot = chartW / Math.max(allRows.length, 1);
+      const barW = Math.min(34, slot - 16);
+      const barH = Math.max(percent ? 4 : 2, chartH * percent / 100);
+      const x = chartX + slot * index + (slot - barW) / 2;
+      fillRect(x, chartY, barW, barH, colors.blue);
+      text(x - 2, chartY - 13, String(row.date || "").slice(5), 7, colors.muted);
+      text(x + 2, chartY + barH + 7, `${percent}%`, 7, colors.blue, true);
+    });
+    cursor = chartY - 38;
+
+    sectionTitle("Daily activity");
+    const activityWidths = [72, 72, 190, 120, 57];
+    drawTableHeader(["DATE", "RATE", "COMPLETED", "SKIPPED", "ADDED"], activityWidths);
+    (data.rows || []).forEach((row, index) => drawTableRow([
+      `${row.date || "-"}\n${row.weekday || ""}`,
+      `${row.percent ?? (row.total ? Math.round((row.done / row.total) * 100) : 0)}%`,
+      (row.completed || []).join(", ") || "-",
+      (row.skipped || []).join(", ") || "-",
+      (row.added || []).join(", ") || "-"
+    ], activityWidths, { index, header: ["DATE", "RATE", "COMPLETED", "SKIPPED", "ADDED"], title: "Daily activity" }));
+
+    pages.forEach((items, index) => {
+      items.push(`${colors.line} RG 0.7 w ${margin} 42 m ${width - margin} 42 l S`);
+      text(margin, 27, "Generated by HabitFlow", 7, colors.muted);
+      text(width - margin - 55, 27, `Page ${index + 1} of ${pages.length}`, 7, colors.muted);
+    });
+
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
-      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+      "",
       "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-      `<< /Length ${stream.join("\n").length} >>\nstream\n${stream.join("\n")}\nendstream`
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
     ];
+    const pageIds = [];
+    pages.forEach((items, index) => {
+      const pageId = 5 + index * 2;
+      const contentId = pageId + 1;
+      pageIds.push(`${pageId} 0 R`);
+      objects.push(
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`,
+        `<< /Length ${items.join("\n").length} >>\nstream\n${items.join("\n")}\nendstream`
+      );
+    });
+    objects[1] = `<< /Type /Pages /Kids [${pageIds.join(" ")}] /Count ${pages.length} >>`;
     let pdf = "%PDF-1.4\n";
     const offsets = [0];
     objects.forEach((object, index) => {
@@ -1057,7 +1241,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
     const url = URL.createObjectURL(createPdf(report));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `habitflow-report-${report.createdAt.slice(0, 10)}.pdf`;
+    link.download = `HabitFlow_Analytics_Report_${report.createdAt.slice(0, 10)}.pdf`;
     document.body.appendChild(link);
     link.click();
     window.setTimeout(() => {

@@ -1,6 +1,6 @@
 importScripts("./habitflow-db.js");
 
-const CACHE_NAME = "habitflow-v4";
+const CACHE_NAME = "habitflow-v10";
 const APP_SHELL = [
   "./",
   "./index.html",

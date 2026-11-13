@@ -69,7 +69,7 @@
         <form id="register-form" class="auth-form" hidden novalidate>
           <div class="input-group">
             <label for="reg-name">Full Name</label>
-            <input type="text" id="reg-name" required minlength="2" maxlength="80" pattern="[A-Za-z]+([ '\\-][A-Za-z]+)*" autocomplete="name" placeholder="Your full name">
+            <input type="text" id="reg-name" required minlength="2" maxlength="80" autocomplete="name" placeholder="Your full name">
           </div>
           <div class="input-group">
             <label for="reg-username">Username</label>
@@ -83,9 +83,10 @@
           <div class="input-group">
             <label for="reg-password">Password</label>
             <div class="input-wrap">
-              <input class="has-toggle" type="password" id="reg-password" required minlength="8" maxlength="128" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])\S{8,128}" autocomplete="new-password" placeholder="Create a password">
+              <input class="has-toggle" type="password" id="reg-password" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Create a password" aria-describedby="password-help">
               <button class="password-toggle" type="button" data-password-target="reg-password" aria-label="Show password">Show</button>
             </div>
+            <small id="password-help" class="auth-help">Use 8–128 characters, including an uppercase letter, a lowercase letter, and a number. Spaces are not allowed.</small>
           </div>
           <div class="input-group">
             <label for="reg-confirm-password">Confirm password</label>
@@ -145,6 +146,29 @@
       return true;
     }
 
+    function validateRegistrationFields() {
+      const name = $('reg-name');
+      const username = $('reg-username');
+      const email = $('reg-email');
+      const password = $('reg-password');
+      const confirmPassword = $('reg-confirm-password');
+      [name, username, email, password, confirmPassword].forEach(field => field.setCustomValidity(''));
+
+      const normalizedName = name.value.trim().replace(/\s+/g, ' ');
+      if (!/^[\p{L}]+(?:[ '-][\p{L}]+)*$/u.test(normalizedName) ||
+          normalizedName.length < 2 || normalizedName.length > 80) {
+        name.setCustomValidity('Full name must contain only letters, spaces, apostrophes, or hyphens.');
+      } else if (!/^[a-z0-9_]{3,30}$/i.test(username.value.trim())) {
+        username.setCustomValidity('Username must be 3–30 letters, numbers, or underscores.');
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.value.trim())) {
+        email.setCustomValidity('Enter a valid email address, such as name@example.com.');
+      } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)\S{8,128}$/.test(password.value)) {
+        password.setCustomValidity('Password must be 8–128 characters with uppercase, lowercase, and a number, without spaces.');
+      } else if (password.value !== confirmPassword.value) {
+        confirmPassword.setCustomValidity('Passwords do not match.');
+      }
+    }
+
     $('tab-login').addEventListener('click', () => showForm('login'));
     $('tab-register').addEventListener('click', () => showForm('register'));
     document.querySelectorAll('.password-toggle').forEach(button => {
@@ -170,12 +194,8 @@
 
     registerForm.addEventListener('submit', async event => {
       event.preventDefault();
+      validateRegistrationFields();
       if (!validateForm(registerForm)) return;
-      if ($('reg-password').value !== $('reg-confirm-password').value) {
-        $('reg-confirm-password').setAttribute('aria-invalid', 'true');
-        setMessage('Passwords do not match.');
-        return;
-      }
       try {
         await registerUser({
           fullName: $('reg-name').value.trim(),

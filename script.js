@@ -13,6 +13,8 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
   const NOTIFICATION_SENT_KEY = "habitflow-notifications-v1";
   const LOCAL_HABITS_KEY = "habitflow-habits-v1";
   const DISPLAY_NAME_KEY = "habitflow-display-name";
+  const REPORTS_KEY = "habitflow-reports-v1";
+  const REPORT_RETENTION_DAYS = 14;
   const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   // Shorthand DOM query selectors
@@ -626,7 +628,8 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
 
   function getNotificationState() {
     try {
-      return JSON.parse(localStorage.getItem(NOTIFICATION_SENT_KEY) || "{}");
+      const key = `${NOTIFICATION_SENT_KEY}:${currentUser?.id || "guest"}`;
+      return JSON.parse(localStorage.getItem(key) || "{}");
     } catch (_) {
       return {};
     }
@@ -640,7 +643,8 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       Object.keys(state).forEach(item => {
         if (state[item] < cutoff) delete state[item];
       });
-      localStorage.setItem(NOTIFICATION_SENT_KEY, JSON.stringify(state));
+      const storageKey = `${NOTIFICATION_SENT_KEY}:${currentUser?.id || "guest"}`;
+      localStorage.setItem(storageKey, JSON.stringify(state));
     } catch (_) {
       // Notification deduplication remains in-memory/browser-session safe.
     }
@@ -721,7 +725,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
   async function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return null;
     try {
-      return await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+      return await navigator.serviceWorker.register("./sw.js?v=10", { scope: "./" });
     } catch (error) {
       console.error("Service worker registration failed:", error);
       return null;
@@ -912,13 +916,15 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
     if (menuButton) menuButton.setAttribute("aria-expanded", "false");
   }
 
-  function printReport() {
-    const report = $("#printReport");
-    if (!report) return;
+  function reportStorageKey() {
+    return `${REPORTS_KEY}:${currentUser?.id || "guest"}`;
+  }
+
+  function reportSnapshot() {
     const today = new Date();
     const displayName = currentUser?.profile?.full_name || currentUser?.profile?.username || "HabitFlow member";
     const stats = dailyStats();
-    const currentStreak = habits.length ? Math.max(...habits.map(getStreak)) : 0;
+    const currentStreak = habits.length ? Math.max(...habits.map(habit => getStreak(habit))) : 0;
     const longestStreak = habits.length ? Math.max(...habits.map(getLongestStreak)) : 0;
     const totalCompletions = habits.reduce((sum, habit) => sum + completedDatesFor(habit).length, 0);
     const totalSkips = habits.reduce((sum, habit) => sum + skippedDatesFor(habit).length, 0);
@@ -931,17 +937,163 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       const completed = habits.filter(habit => completedDatesFor(habit).includes(key)).map(habit => habit.name);
       const skipped = habits.filter(habit => skippedDatesFor(habit).includes(key)).map(habit => habit.name);
       const added = habits.filter(habit => String(habit.createdAt || "").slice(0, 10) === key).map(habit => habit.name);
-      rows.push(`<tr><td>${escapeHtml(key)}<br><small>${escapeHtml(new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date))}</small></td><td>${escapeHtml(completed.join(", ") || "-")}</td><td>${escapeHtml(skipped.join(", ") || "-")}</td><td>${escapeHtml(added.join(", ") || "-")}</td></tr>`);
+      rows.push({ date: key, weekday: new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(date), completed, skipped, added });
     }
-    const performanceRows = habits.map(habit => `<tr><td>${escapeHtml(habit.name)}</td><td>${escapeHtml(String(habit.createdAt || "").slice(0, 10) || "-")}</td><td>${getStreak(habit)}</td><td>${getLongestStreak(habit)}</td><td>${completedDatesFor(habit).length}</td><td>${skippedDatesFor(habit).length}</td></tr>`).join("");
-    report.innerHTML = `
-      <header class="report-header"><div><strong>HabitFlow</strong><h1>Weekly activity report</h1></div><div><p>${escapeHtml(displayName)}</p><p>${escapeHtml(currentUser?.email || "")}</p><small>Generated ${escapeHtml(today.toLocaleString())}</small></div></header>
-      <section class="report-metrics"><div><b>${habits.length}</b><span>Total habits</span></div><div><b>${stats.percent}%</b><span>Completion rate</span></div><div><b>${currentStreak}</b><span>Current streak</span></div><div><b>${longestStreak}</b><span>Longest streak</span></div><div><b>${totalCompletions}</b><span>Total completions</span></div><div><b>${totalSkips}</b><span>Total skips</span></div><div><b>${newThisWeek}</b><span>New this week</span></div></section>
-      <h2>7-day breakdown</h2><table><thead><tr><th>Date</th><th>Completed</th><th>Skipped</th><th>Newly added</th></tr></thead><tbody>${rows.join("")}</tbody></table>
-      <h2>All-time habit performance</h2><table><thead><tr><th>Habit</th><th>Created</th><th>Current</th><th>Longest</th><th>Done</th><th>Skipped</th></tr></thead><tbody>${performanceRows || `<tr><td colspan="6">No habits yet.</td></tr>`}</tbody></table>`;
-    report.classList.add("is-printing");
-    window.setTimeout(() => window.print(), 50);
-    window.onafterprint = () => report.classList.remove("is-printing");
+    const performance = habits.map(habit => ({
+      name: habit.name,
+      created: String(habit.createdAt || "").slice(0, 10) || "-",
+      currentStreak: getStreak(habit),
+      longestStreak: getLongestStreak(habit),
+      completed: completedDatesFor(habit).length,
+      skipped: skippedDatesFor(habit).length
+    }));
+    return {
+      displayName,
+      email: currentUser?.email || "",
+      generatedAt: today.toISOString(),
+      metrics: { habits: habits.length, completionRate: stats.percent, currentStreak, longestStreak, totalCompletions, totalSkips, newThisWeek },
+      rows,
+      performance
+    };
+  }
+
+  function validReport(report) {
+    return report && typeof report.id === "string" && report.userId === currentUser?.id &&
+      Number.isFinite(Date.parse(report.createdAt)) && Number.isFinite(Date.parse(report.expiresAt)) &&
+      report.data && Array.isArray(report.data.rows) && Array.isArray(report.data.performance);
+  }
+
+  function loadReports() {
+    const now = Date.now();
+    try {
+      const reports = JSON.parse(localStorage.getItem(reportStorageKey()) || "[]");
+      if (!Array.isArray(reports)) throw new Error("Saved reports are corrupted.");
+      const valid = reports.filter(validReport).filter(report => Date.parse(report.expiresAt) > now);
+      if (valid.length !== reports.length) localStorage.setItem(reportStorageKey(), JSON.stringify(valid));
+      return valid.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    } catch (error) {
+      console.error("Could not load saved reports:", error);
+      showToast("Saved reports are unavailable or corrupted.");
+      return [];
+    }
+  }
+
+  function saveReport(data) {
+    const report = {
+      id: makeId(),
+      userId: currentUser.id,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + REPORT_RETENTION_DAYS * 86400000).toISOString(),
+      data
+    };
+    const reports = [report, ...loadReports()];
+    try {
+      localStorage.setItem(reportStorageKey(), JSON.stringify(reports));
+    } catch (error) {
+      console.error("Could not save report:", error);
+      showToast("Report could not be saved because browser storage is full.");
+      return null;
+    }
+    return report;
+  }
+
+  function pdfText(value) {
+    return String(value ?? "").replace(/[^\x20-\x7E]/g, "?").replace(/[\\()]/g, "\\$&");
+  }
+
+  function createPdf(report) {
+    const { data } = report;
+    const lines = [
+      "HabitFlow - Weekly activity report",
+      `User: ${data.displayName}`,
+      `Email: ${data.email}`,
+      `Generated: ${new Date(data.generatedAt).toLocaleString()}`,
+      "",
+      `Total habits: ${data.metrics.habits}`,
+      `Completion rate: ${data.metrics.completionRate}%`,
+      `Current streak: ${data.metrics.currentStreak}`,
+      `Longest streak: ${data.metrics.longestStreak}`,
+      `Total completions: ${data.metrics.totalCompletions}`,
+      `Total skips: ${data.metrics.totalSkips}`,
+      `New this week: ${data.metrics.newThisWeek}`,
+      "",
+      "7-day breakdown"
+    ];
+    data.rows.forEach(row => lines.push(`${row.date} (${row.weekday}) | Completed: ${row.completed.join(", ") || "-"} | Skipped: ${row.skipped.join(", ") || "-"} | Added: ${row.added.join(", ") || "-"}`));
+    lines.push("", "All-time habit performance");
+    data.performance.forEach(item => lines.push(`${item.name} | Created: ${item.created} | Current: ${item.currentStreak} | Longest: ${item.longestStreak} | Done: ${item.completed} | Skipped: ${item.skipped}`));
+    const visibleLines = lines.slice(0, 52);
+    const stream = ["BT", "/F1 10 Tf", "50 760 Td"];
+    visibleLines.forEach((line, index) => {
+      if (index) stream.push("0 -14 Td");
+      stream.push(`(${pdfText(line)}) Tj`);
+    });
+    stream.push("ET");
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      `<< /Length ${stream.join("\n").length} >>\nstream\n${stream.join("\n")}\nendstream`
+    ];
+    let pdf = "%PDF-1.4\n";
+    const offsets = [0];
+    objects.forEach((object, index) => {
+      offsets.push(pdf.length);
+      pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    });
+    const xrefOffset = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    offsets.slice(1).forEach(offset => { pdf += `${String(offset).padStart(10, "0")} 00000 n \n`; });
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+    return new Blob([pdf], { type: "application/pdf" });
+  }
+
+  function downloadReportFile(report) {
+    if (!validReport(report)) {
+      showToast("This saved report is missing or corrupted.");
+      return;
+    }
+    const url = URL.createObjectURL(createPdf(report));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `habitflow-report-${report.createdAt.slice(0, 10)}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => {
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, 1000);
+  }
+
+  function renderSavedReports() {
+    const container = $("#savedReports");
+    if (!container) return;
+    const reports = loadReports();
+    if (!reports.length) {
+      container.textContent = "No saved reports. Reports are kept for 14 days.";
+      return;
+    }
+    container.innerHTML = `<strong>Saved reports</strong>${reports.map(report => `
+      <div class="saved-report-row">
+        <span>${escapeHtml(new Date(report.createdAt).toLocaleString())} (expires ${escapeHtml(new Date(report.expiresAt).toLocaleDateString())})</span>
+        <button type="button" class="link-btn saved-report-download" data-report-id="${escapeHtml(report.id)}">Download</button>
+      </div>`).join("")}`;
+  }
+
+  function downloadCurrentReport() {
+    const report = saveReport(reportSnapshot());
+    if (!report) return;
+    downloadReportFile(report);
+    renderSavedReports();
+    showToast("PDF report downloaded and saved for 14 days.");
+  }
+
+  function printReport() {
+    const report = saveReport(reportSnapshot());
+    if (!report) return;
+    downloadReportFile(report);
+    renderSavedReports();
   }
 
   async function handleLogout() {
@@ -967,6 +1119,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
       const nextCompleted = !wasCompleted(habit, today);
       habit.completedDates = completedDatesFor(habit).filter(date => date !== today);
       if (nextCompleted) habit.completedDates.push(today);
+      habit.history = Object.fromEntries(habit.completedDates.map(date => [date, true]));
       habit.skippedDates = skippedDatesFor(habit).filter(date => date !== today);
       habit.status = nextCompleted ? "completed" : "pending";
       habit.updatedAt = Date.now();
@@ -1158,6 +1311,18 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
 
   $("#settingsClearDataBtn")?.addEventListener("click", () => $("#clearDataBtn")?.click());
   $("#downloadReportBtn")?.addEventListener("click", printReport);
+  $("#savedReports")?.addEventListener("click", event => {
+    const button = event.target.closest(".saved-report-download");
+    if (!button) return;
+    const report = loadReports().find(item => item.id === button.dataset.reportId);
+    if (!report) {
+      renderSavedReports();
+      showToast("That report has expired or is unavailable.");
+      return;
+    }
+    downloadReportFile(report);
+    showToast("Saved report downloaded.");
+  });
 
   $("#notificationBtn")?.addEventListener("click", () => void enableNotifications());
 
@@ -1178,6 +1343,7 @@ import { checkSession, clearUserHabits, loadHabits as loadStoredHabits, saveHabi
     currentUser = user;
     habits = await loadHabits();
     render();
+    renderSavedReports();
     await registerServiceWorker();
     navigator.serviceWorker.addEventListener("message", event => {
       if (event.data?.type === "habitflow-refresh") {
